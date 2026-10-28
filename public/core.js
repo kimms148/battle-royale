@@ -47,6 +47,68 @@ export const OPTICS = {
   x8: { name: '8배율', zoom: 8, type: 'scope', ret: 'mil', len: .28, h: .055, r: .02 },
 };
 
+/* ---------- 파츠 (배그식 부착물) ----------
+   총 종류마다 달 수 있는 전용 파츠가 다름. fx: vr 수직반동 배수, hr 수평반동 배수, rec 반동 회복 배수, ads 조준 속도 배수, sway 흔들림 배수, mag 탄창 추가, rt 장전시간 배수, spread 산탄 퍼짐 배수 */
+export const ATT = {
+  comp_ar: { slot: 'muzzle', name: '보정기 (소총)', fx: { vr: .85, hr: .75 } }, flash_ar: { slot: 'muzzle', name: '소염기 (소총)', fx: { vr: .9, hr: .9, noFlash: 1 } }, sup_ar: { slot: 'muzzle', name: '소음기 (소총)', fx: { hr: .95, quiet: 1, noFlash: 1 } },
+  comp_smg: { slot: 'muzzle', name: '보정기 (기관단총)', fx: { vr: .85, hr: .75 } }, flash_smg: { slot: 'muzzle', name: '소염기 (기관단총)', fx: { vr: .9, hr: .9, noFlash: 1 } }, sup_smg: { slot: 'muzzle', name: '소음기 (기관단총)', fx: { hr: .95, quiet: 1, noFlash: 1 } },
+  comp_sr: { slot: 'muzzle', name: '보정기 (저격총)', fx: { vr: .8, hr: .8 } }, flash_sr: { slot: 'muzzle', name: '소염기 (저격총)', fx: { vr: .9, hr: .9, noFlash: 1 } }, sup_sr: { slot: 'muzzle', name: '소음기 (저격총)', fx: { quiet: 1, noFlash: 1 } },
+  sup_p: { slot: 'muzzle', name: '소음기 (권총)', fx: { quiet: 1, noFlash: 1 } }, choke: { slot: 'muzzle', name: '초크', fx: { spread: .6 } }, duck: { slot: 'muzzle', name: '덕빌', fx: { spread: .75, spreadY: .4 } },
+  grip_v: { slot: 'grip', name: '수직 손잡이', fx: { vr: .8 } }, grip_a: { slot: 'grip', name: '앵글 손잡이', fx: { hr: .8, ads: 1.25 } }, grip_h: { slot: 'grip', name: '하프 손잡이', fx: { vr: .9, hr: .9, rec: 1.3 } },
+  grip_t: { slot: 'grip', name: '엄지 손잡이', fx: { vr: .92, ads: 1.35 } }, grip_l: { slot: 'grip', name: '라이트 손잡이', fx: { vr: .93, hr: .88, sway: .85 } },
+  mag_e_ar: { slot: 'mag', name: '대용량 탄창 (소총)', fx: { mag: 10 } }, mag_q_ar: { slot: 'mag', name: '퀵드로우 탄창 (소총)', fx: { rt: .7 } }, mag_eq_ar: { slot: 'mag', name: '대용량 퀵드로우 (소총)', fx: { mag: 10, rt: .7 } },
+  mag_e_smg: { slot: 'mag', name: '대용량 탄창 (기관단총)', fx: { mag: 10 } }, mag_q_smg: { slot: 'mag', name: '퀵드로우 탄창 (기관단총)', fx: { rt: .7 } }, mag_eq_smg: { slot: 'mag', name: '대용량 퀵드로우 (기관단총)', fx: { mag: 10, rt: .7 } },
+  mag_e_sr: { slot: 'mag', name: '대용량 탄창 (저격총)', fx: { mag: 5 } }, mag_q_sr: { slot: 'mag', name: '퀵드로우 탄창 (저격총)', fx: { rt: .7 } }, mag_eq_sr: { slot: 'mag', name: '대용량 퀵드로우 (저격총)', fx: { mag: 5, rt: .7 } },
+  mag_e_p: { slot: 'mag', name: '대용량 탄창 (권총)', fx: { mag: 8 } },
+  stock_t: { slot: 'stock', name: '전술 개머리판', fx: { vr: .92, sway: .8 } }, cheek: { slot: 'stock', name: '칙패드', fx: { vr: .85, sway: .7 } }, loops: { slot: 'stock', name: '탄띠', fx: { rt: .75 } },
+};
+// 머리·몸통·팔다리 배율 (배그와 비슷하게)
+export const ZONE_MUL = { AR: [2.35, 1, .9], SMG: [2.1, 1, 1.05], DMR: [2.35, 1.05, .95], SR: [2.5, 1.3, .95], SG: [1.5, .9, 1.05], P: [2.1, 1, 1.05] };
+export const ATT_SLOTS = ['muzzle', 'grip', 'mag', 'stock'];
+export const SLOT_NAME = { optic: '조준경', muzzle: '총구', grip: '손잡이', mag: '탄창', stock: '개머리판' };
+export function wclass(w) { return w.thr || w.rig ? null : w.pistol ? 'P' : w.pel ? 'SG' : w.grp === '기관단총' ? 'SMG' : w.act === 'bolt' ? 'SR' : w.grp === '저격·지정사수' ? 'DMR' : 'AR'; }
+const GRIPS = ['grip_v', 'grip_a', 'grip_h', 'grip_t', 'grip_l'];
+const ALLOW = { AR: { muzzle: ['comp_ar', 'flash_ar', 'sup_ar'], grip: GRIPS, mag: ['mag_e_ar', 'mag_q_ar', 'mag_eq_ar'], stock: ['stock_t'] },
+  SMG: { muzzle: ['comp_smg', 'flash_smg', 'sup_smg'], grip: GRIPS, mag: ['mag_e_smg', 'mag_q_smg', 'mag_eq_smg'], stock: ['stock_t'] },
+  DMR: { muzzle: ['comp_sr', 'flash_sr', 'sup_sr', 'comp_ar', 'flash_ar', 'sup_ar'], grip: GRIPS, mag: ['mag_e_sr', 'mag_q_sr', 'mag_eq_sr'], stock: ['cheek'] },
+  SR: { muzzle: ['comp_sr', 'flash_sr', 'sup_sr'], grip: [], mag: ['mag_e_sr', 'mag_q_sr', 'mag_eq_sr'], stock: ['cheek', 'loops'] },
+  SG: { muzzle: ['choke', 'duck'], grip: [], mag: [], stock: ['loops'] }, P: { muzzle: ['sup_p'], grip: [], mag: ['mag_e_p'], stock: [] } };
+export function attAllowed(w, slot) { const c = wclass(w); if (!c) return []; const a = (ALLOW[c][slot] || []).slice(); if (slot === 'mag' && (w.clipLoad || w.act === 'pump')) return []; if (slot === 'mag' && w.k === 'kar98k') return []; return a; }
+const attSel = {}; // 무기별 {muzzle, grip, mag, stock}
+export function getAtts(w) { return attSel[w.k] || (attSel[w.k] = {}); }
+export function attFx(w) { const f = { vr: 1, hr: 1, rec: 1, ads: 1, sway: 1, mag: 0, rt: 1, spread: 1, spreadY: 1 }; const a = attSel[w.k]; if (!a) return f;
+  for (const sl in a) { const d = a[sl] && ATT[a[sl]]; if (!d) continue; for (const k in d.fx) { if (k === 'mag') f.mag += d.fx.mag; else if (typeof d.fx[k] === 'number' && k in f) f[k] *= d.fx[k]; else f[k] = d.fx[k]; } } return f; }
+const pm = { dark: new THREE.MeshStandardMaterial({ color: 0x1e1f1d, roughness: .5, metalness: .55 }), mid: new THREE.MeshStandardMaterial({ color: 0x3a3b37, roughness: .6, metalness: .4 }), tan: new THREE.MeshStandardMaterial({ color: 0x8b7a5a, roughness: .8 }), brass: new THREE.MeshStandardMaterial({ color: 0xc9a043, metalness: .8, roughness: .3 }), lens: new THREE.MeshBasicMaterial({ color: 0xfff6d0 }) };
+const bx = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+const cy = (r1, r2, l, m, seg = 16) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, l, seg), m); c.rotation.z = H; return c; };
+// 파츠 모양 (총 좌표계: +X가 총구 방향, 원점이 부착 지점)
+export function buildAtt(k) { const g = new THREE.Group(); const d = ATT[k]; if (!d) return g;
+  if (k.startsWith('comp')) { const c = cy(.014, .014, .06, pm.dark); c.position.x = .03; g.add(c); for (let i = 0; i < 3; i++) { const sl = bx(.006, .006, .03, pm.mid); sl.position.set(.02 + i * .012, .013, 0); g.add(sl); } }
+  else if (k.startsWith('flash')) { const c = cy(.013, .013, .03, pm.dark); c.position.x = .015; g.add(c); for (let i = 0; i < 4; i++) { const pr = bx(.04, .004, .004, pm.dark); const a = i * H + .4; pr.position.set(.05, Math.sin(a) * .01, Math.cos(a) * .01); g.add(pr); } }
+  else if (k.startsWith('sup')) { const L = k === 'sup_p' ? .12 : k === 'sup_sr' ? .22 : .18, r = k === 'sup_p' ? .014 : .019; const c = cy(r, r, L, pm.dark, 20); c.position.x = L / 2; g.add(c); const e = cy(r * .5, r * .5, .004, pm.mid); e.position.x = L; g.add(e); }
+  else if (k === 'choke') { const c = cy(.015, .013, .05, pm.mid); c.position.x = .025; g.add(c); }
+  else if (k === 'duck') { const c = bx(.07, .008, .04, pm.dark); c.position.x = .035; g.add(c); }
+  else if (k === 'grip_v') { const c = bx(.024, .085, .026, pm.dark); c.position.y = -.042; g.add(c); }
+  else if (k === 'grip_a') { const c = bx(.06, .03, .024, pm.dark); c.position.set(-.01, -.02, 0); c.rotation.z = -.5; g.add(c); }
+  else if (k === 'grip_h') { const c = bx(.04, .04, .024, pm.dark); c.position.y = -.02; c.rotation.z = .3; g.add(c); }
+  else if (k === 'grip_t') { const c = bx(.03, .022, .03, pm.dark); c.position.set(.01, -.012, 0); g.add(c); }
+  else if (k === 'grip_l') { const c = bx(.05, .028, .028, pm.dark); c.position.y = -.016; g.add(c); const l = cy(.009, .009, .004, pm.lens); l.position.set(.026, -.016, 0); g.add(l); }
+  else if (k.startsWith('mag')) { const ext = k.includes('_e'), q = k.includes('q'); if (ext) { const c = bx(.03, .06, .022, pm.dark); c.position.y = -.03; g.add(c); } if (q) { const t = bx(.008, .03, .024, new THREE.MeshStandardMaterial({ color: 0xd2622a, roughness: .7 })); t.position.set(-.02, ext ? -.05 : -.015, 0); g.add(t); } if (!ext && !q) g.add(bx(.03, .03, .022, pm.dark)); }
+  else if (k === 'stock_t') { const c = bx(.07, .09, .036, pm.dark); c.position.x = -.035; g.add(c); const p = bx(.014, .1, .04, pm.mid); p.position.x = -.07; g.add(p); }
+  else if (k === 'cheek') { const c = bx(.12, .022, .04, pm.tan); c.position.y = .011; g.add(c); }
+  else if (k === 'loops') { const c = bx(.1, .03, .006, new THREE.MeshStandardMaterial({ color: 0x4a3d2a, roughness: .9 })); g.add(c); for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(.004, .004, .028, 8), pm.brass); b.position.set(-.04 + i * .02, 0, .005); g.add(b); } }
+  g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.frustumCulled = false; } }); return g; }
+// 총에 파츠 모양을 붙임 (부착 지점은 모델을 읽어서 계산해 둔 위치)
+export function applyAtts(model, w) { const U = model.userData; U.attG.clear(); U.gripHand = null; if (U.extMag) { U.extMag.parent && U.extMag.parent.remove(U.extMag); U.extMag = null; }
+  const a = attSel[w.k] || {}; const S = U.size;
+  if (a.muzzle) { const g = buildAtt(a.muzzle); g.position.copy(U.muzzle.position); U.attG.add(g); }
+  if (a.grip && U.hands && U.hands.l) { const g = buildAtt(a.grip); g.position.set(U.hands.l.x, U.hands.l.y + .008, 0); U.attG.add(g); U.gripHand = new THREE.Vector3(U.hands.l.x, U.hands.l.y - (a.grip === 'grip_v' ? .05 : .02), 0); }
+  if (a.mag) { const g = buildAtt(a.mag); const mp = U.parts.mag; if (mp) { model.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(mp.n, true); const inv = model.matrixWorld.clone().invert(); bb.applyMatrix4(inv); const c = bb.getCenter(new THREE.Vector3()); const bot = new THREE.Vector3(c.x, bb.min.y + .005, 0);
+      const wpt = model.localToWorld(bot.clone()); mp.n.worldToLocal(wpt); g.position.copy(wpt); const ws = mp.n.getWorldScale(new THREE.Vector3()), ms = model.getWorldScale(new THREE.Vector3()); g.scale.set(ms.x / ws.x, ms.y / ws.y, ms.z / ws.z); mp.n.add(g); U.extMag = g; }
+    else { g.position.copy(U.magPt); g.position.y += .005; U.attG.add(g); } }
+  if (a.stock) { const g = buildAtt(a.stock); if (a.stock === 'cheek') { const x = -S.x * .36; g.position.set(x, (U.topAt(x) ?? 0), 0); } else if (a.stock === 'loops') g.position.set(-S.x * .33, 0, S.z / 2 + .004); else g.position.set(-S.x / 2 + .02, 0, 0); U.attG.add(g); } }
+export function setAtt(w, slot, k) { const a = getAtts(w); if (k) a[slot] = k; else delete a[slot]; const m = cache[w.k]; if (m) applyAtts(m, w); }
+
 /* ---------- 모델 ---------- */
 const loader = new GLTFLoader(); const cache = {}; let BASE = 'models/';
 export function setModelBase(b) { BASE = b; }
@@ -86,7 +148,16 @@ export async function getModel(w) {
     // 클립 장전 총: 놋쇠 탄 5발짜리 클립을 직접 만들어 노리쇠 위에서 꽂음
     let clipObj = null; if (w.clipLoad) { clipObj = new THREE.Group(); const bm = new THREE.MeshStandardMaterial({ color: 0xc9a043, metalness: .8, roughness: .3 }); for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.0045, .0045, .055, 8).rotateZ(H), bm); c.position.y = -i * .009; clipObj.add(c); } const plate = new THREE.Mesh(new THREE.BoxGeometry(.012, .05, .006), new THREE.MeshStandardMaterial({ color: 0x55534d, metalness: .6, roughness: .5 })); plate.position.set(-.025, -.018, 0); clipObj.add(plate);
       const bw = parts.bolt ? parts.bolt.n.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-S.x * .12, 0, 0); clipObj.position.set(bw.x + .03, railY + .02, 0); clipObj.userData.p0 = clipObj.position.clone(); clipObj.visible = false; out.add(clipObj); }
-    out.userData = { muzzle: mz, size: S, gltf: g, parts, proxy, norm, optic: null, opticKey: 'none', railY, hands, clip: !!clipObj, clipObj };
+    // 가늠자·가늠쇠 높이: 위에서 아래로 광선을 쏴 뒤쪽(기관부)과 앞쪽(총구 근처) 윗면을 찾음
+    const prof = (() => { const rc = new THREE.Raycaster(), DN = new THREE.Vector3(0, -1, 0), UP = new THREE.Vector3(0, 1, 0);
+      const top = x => { let b = null; for (const z of [-.006, 0, .006]) { rc.set(new THREE.Vector3(x, S.y + 1, z), DN); const h = rc.intersectObject(norm, true)[0]; if (h && (b === null || h.point.y > b)) b = h.point.y; } return b; };
+      const under = x => { let b = null; for (const z of [-.006, 0, .006]) { rc.set(new THREE.Vector3(x, -S.y - 1, z), UP); const h = rc.intersectObject(norm, true)[0]; if (h && (b === null || h.point.y < b)) b = h.point.y; } return b; };
+      const mx = (a, b2, f) => { let best = null, bx = a; for (let i = 0; i <= 12; i++) { const x = S.x * (a + (b2 - a) * i / 12), y = f(x); if (y !== null && (best === null || (f === top ? y > best : y < best))) { best = y; bx = x; } } return [best, bx]; };
+      const [rear] = mx(-.22, .12, top), [front] = mx(.3, .48, top), [mb, mbx] = mx(-.12, .16, under);
+      let iron = S.y / 2 + .012; if (rear !== null) iron = (front !== null && front > rear - .015 ? Math.max(rear, front) + .004 : rear + .008);
+      return { iron, magPt: new THREE.Vector3(mbx, mb ?? -S.y / 2, 0), top }; })();
+    const attG = new THREE.Group(); out.add(attG);
+    out.userData = { muzzle: mz, size: S, gltf: g, parts, proxy, norm, optic: null, opticKey: 'none', railY, hands, clip: !!clipObj, clipObj, iron: prof.iron, magPt: prof.magPt, topAt: prof.top, attG };
     if (w.def && !w.builtin) attachOptic(out, w, w.def);
     if (w.builtin) out.userData.opticKey = w.def;
     cache[w.k] = out; return out;
@@ -170,6 +241,7 @@ export function createFP(o) {
   const inv = {}; const ammoPool = o.ammoPool || null; // 배틀로얄: 구경별 공용 탄약
   const optSel = {}; // 무기별 조준경
   function invOf(w) { return inv[w.k] || (inv[w.k] = { ammo: o.startFull === false ? 0 : w.mag, reserve: w.thr ? (o.startThrow ?? 2) : w.mag * 4, mode: 0 }); }
+  const magOf = w => w.mag + (attFx(w).mag || 0), rtOf = w => w.rt * attFx(w).rt;
   function reserveOf(w) { return ammoPool && !w.thr ? (ammoPool[w.cal] || 0) : invOf(w).reserve; }
   function takeReserve(w, n) { if (ammoPool && !w.thr) { const t = Math.min(n, ammoPool[w.cal] || 0); ammoPool[w.cal] = (ammoPool[w.cal] || 0) - t; return t; } const v = invOf(w); const t = Math.min(n, v.reserve); v.reserve -= t; return t; }
   const P = { pos: new THREE.Vector3().copy(o.spawn || new THREE.Vector3(0, 0, 6)), vel: new THREE.Vector3(), yaw: 0, pitch: 0, stance: 'stand', eye: 1.65, onG: true, lean: 0, breath: 1, stepT: 0, bob: 0, sprinting: false, holding: false, dead: false };
@@ -206,7 +278,7 @@ export function createFP(o) {
     if (!slots[s]) return; curSlot = s; const w = WK[slots[s]];
     const m = await getModel(w); if (slots[curSlot] !== w.k || curSlot !== s) return;
     vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.userData.muzzle.add(flash); m.userData.muzzle.add(flashLight); cur = m;
-    if (optSel[w.k] !== undefined) attachOptic(m, w, optSel[w.k]);
+    if (optSel[w.k] !== undefined) attachOptic(m, w, optSel[w.k]); applyAtts(m, w);
     playIdle(m); ws = { w, draw: 0, reload: null, cycle: null }; ads = false; burstLeft = 0; updHud(); renderSlots(); o.onEquip && o.onEquip(w);
   }
   function setOptic(w, key) { optSel[w.k] = key; const m = cache[w.k]; if (m) attachOptic(m, w, key); updHud(); }
@@ -223,7 +295,7 @@ export function createFP(o) {
   function poseArm(A, target, shoulder, fist) { const elbow = shoulder.clone().lerp(target, .52).add(new THREE.Vector3(A.side * .07, -.1, .02));
     const wristP = target.clone().lerp(elbow, .18);
     seg(A.up, shoulder, elbow, .045); seg(A.fo, elbow, wristP, .034); seg(A.wrist, wristP.clone().lerp(target, .3), wristP, .024);
-    A.hand.position.copy(target); A.hand.quaternion.setFromUnitVectors(_Y, wristP.clone().sub(target).normalize()); A.hand.rotateY(A.side * .3); A.fing.scale.set(1, fist ? .6 : 1, 1); A.fing.position.y = fist ? .01 : -.012; }
+    A.hand.position.copy(target); A.hand.quaternion.setFromUnitVectors(_Y, wristP.clone().sub(target).normalize()); A.hand.rotateY(A.side * .3); A.fing.scale.set(1, fist ? .6 : 1, 1); A.fing.position.y = fist ? .01 : -.012; A.hand.scale.setScalar(fist ? .78 : 1); }
   const medProp = new THREE.Group(); { const tc = document.createElement('canvas'); tc.width = tc.height = 64; const g2 = tc.getContext('2d'); g2.fillStyle = '#eee'; g2.fillRect(0, 0, 64, 64); g2.fillStyle = '#c22'; g2.fillRect(26, 10, 12, 44); g2.fillRect(10, 26, 44, 12); const t = new THREE.CanvasTexture(tc); t.colorSpace = THREE.SRGBColorSpace;
     medProp.userData.kit = new THREE.Mesh(new THREE.BoxGeometry(.16, .1, .12), new THREE.MeshStandardMaterial({ map: t, roughness: .6 })); medProp.userData.med = new THREE.Mesh(new THREE.BoxGeometry(.24, .14, .16), new THREE.MeshStandardMaterial({ map: t, roughness: .6 })); medProp.userData.bandage = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, .07, 14).rotateZ(H), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: .9 }));
     ['kit', 'med', 'bandage'].forEach(k => { medProp.add(medProp.userData[k]); medProp.userData[k].renderOrder = 1; }); vmRoot.add(medProp); medProp.visible = false; }
@@ -235,7 +307,7 @@ export function createFP(o) {
   function punch() { const t = performance.now() / 1000; if (punchT < .42) return; punchT = 0; punchSide = -punchSide; punchDone = false; snd.noise(.12, 900, .12, 4); }
   function punchHit() { cam2.updateMatrixWorld(); const og = cam2.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion); ray.set(og, f); ray.far = 1.8;
     const h = ray.intersectObjects((o.playerHitboxes ? o.playerHitboxes() : []).concat(hitables), false)[0]; const st = o.rayStatic ? o.rayStatic(og, f, 1.8) : null;
-    if (h && h.object.userData.player && (!st || h.distance < st.distance)) { const head = !!h.object.userData.head; blood(h.point, f, head); snd.hit(); snd.noise(.1, 500, .4, 3); showHit(''); o.onHitPlayer && o.onHitPlayer(h.object.userData.player, head ? 13 : 18, false, 'fist', h.point, f); shake += .15; }
+    if (h && h.object.userData.player && (!st || h.distance < st.distance)) { const head = !!h.object.userData.head; blood(h.point, f, head); snd.hit(); snd.noise(.1, 500, .4, 3); showHit(''); o.onHitPlayer && o.onHitPlayer(h.object.userData.player, head ? 15 : 11, head, 'fist', h.point, f); shake += .15; }
     else if (st || (h && !h.object.userData.player)) { const hp = st || h; puff(hp.point, 0xb8a68a, .3, .4); snd.noise(.08, 400, .35, 4); shake += .2; if (h && h.object.userData.target) { h.object.userData.target.userData.av += 1.5; snd.ding(); } } }
   function updArms(dt) {
     const w = ws && ws.w; const healK = o.healing && o.healing(); const showArms = enabled && !P.dead && !(w && w.rig) && !(cur && !cur.visible && !(ws && ws.reload && ws.reload.kind === 'throw'));
@@ -247,11 +319,11 @@ export function createFP(o) {
       poseArm(AR, new THREE.Vector3(.07 + wig, -.21, -.34), SH_R, false); poseArm(AL, new THREE.Vector3(-.07, -.22 - wig, -.35), SH_L, false); return; }
     if (!cur) { punchT += dt; if (!punchDone && punchT > .09) { punchDone = true; punchHit(); }
       const pe = punchT < .32 ? Math.sin(Math.min(1, punchT / .32) * Math.PI) : 0; const run = P.sprinting ? 1 : 0; const sw = Math.sin(P.bob) * .03 * (run ? 2 : 1);
-      const r = new THREE.Vector3(.17, -.23 + bob + br - run * .05 + sw, -.46), l = new THREE.Vector3(-.17, -.24 - bob + br - run * .05 - sw, -.44);
+      const r = new THREE.Vector3(.19, -.25 + bob + br - run * .05 + sw, -.5), l = new THREE.Vector3(-.19, -.26 - bob + br - run * .05 - sw, -.48);
       if (punchSide > 0) r.add(new THREE.Vector3(-.13 * pe, .07 * pe, -.28 * pe)); else l.add(new THREE.Vector3(.13 * pe, .07 * pe, -.28 * pe));
       poseArm(AR, r, SH_R, true); poseArm(AL, l, SH_L, true); return; }
     const U = cur.userData, Hd = U.hands; if (!Hd) return;
-    const rW = cur.localToWorld(Hd.r.clone()); let lW = Hd.l ? cur.localToWorld(Hd.l.clone()) : null;
+    const rW = cur.localToWorld(Hd.r.clone()); let lW = Hd.l ? cur.localToWorld((U.gripHand || Hd.l).clone()) : null;
     if (Hd.l && U.parts.pump) { const d = partDelta('pump'); if (d) lW.add(d); }
     const R = ws.reload;
     if (R && R.kind === 'throw') { poseArm(AR, toCam(rW), SH_R, true); poseArm(AL, new THREE.Vector3(-.2, -.3, -.3), SH_L, true); AR.g.visible = R.t < .35; return; }
@@ -260,7 +332,7 @@ export function createFP(o) {
     if (R && R.kind === 'mag' && lc) { const T = R.t, mOut = .3, slap = w.rt * .62, boltS = w.rt * .68; const mg = U.clip ? U.clipObj : U.parts.mag ? U.parts.mag.n : U.proxy;
       const wgt = Math.min(ease((T - .05) / .25), 1 - ease((T - slap - .05) / .2)); if (wgt > 0 && mg.visible !== false) { const mp = toCam(mg.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, -.035, 0)); lc.lerp(mp, wgt); }
       if (R.empty && T > boltS - .1 && T < boltS + .6) { const bp = partWorld(w.pistol ? 'slide' : 'bolt') || partWorld('slide'); const ww = Math.min(ease((T - boltS + .1) / .15), 1 - ease((T - boltS - .45) / .15)); const tp = bp ? toCam(bp) : rc.clone().add(new THREE.Vector3(0, .06, 0)); lc.lerp(tp.add(new THREE.Vector3(-.02, .02, .02)), ww); } }
-    if (R && R.kind === 'shell' && lc) { const sh = U.proxy; if (sh.visible) lc.lerp(toCam(sh.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, -.03, 0)), .85); else lc.add(new THREE.Vector3(0, -.05, .04)); }
+    if (R && R.kind === 'shell' && lc) { const sh = U.shell || U.proxy; if (sh.visible) lc.lerp(toCam(sh.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, -.03, 0)), .85); else lc.add(new THREE.Vector3(0, -.05, .04)); }
     let rcc = rc; if (ws.cycle && ws.cycle.kind === 'bolt') { const u = ws.cycle.t / ws.cycle.dur; const ww = Math.sin(Math.min(1, Math.max(0, (u - .05) / .85)) * Math.PI); const bp = partWorld('bolt'); const tp = bp ? toCam(bp).add(new THREE.Vector3(.03, 0, .02)) : rc.clone().add(new THREE.Vector3(.04, .07, .05)); rcc = rc.clone().lerp(tp, ww); }
     poseArm(AR, rcc, SH_R, false);
     if (lc) poseArm(AL, lc, SH_L, false); else poseArm(AL, new THREE.Vector3(-.18, -.3 + br, -.3), SH_L, true);
@@ -269,11 +341,12 @@ export function createFP(o) {
 
 
   /* ----- 입력 ----- */
-  const ctrl = () => enabled && !P.dead && (!o.canControl || o.canControl());
+  let invOpen = false;
+  const ctrl = () => enabled && !P.dead && !invOpen && (!o.canControl || o.canControl());
   // 클릭 순간에 바로 잠가야 브라우저가 허락함 (비동기로 다시 시도하면 막힘)
   function lockNow() { try { const r = o.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
   el.start && el.start.addEventListener('click', () => { ac(); lockNow(); el.start.hidden = true; });
-  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === o.canvas; if (!locked && enabled) { el.start && (el.start.hidden = false); fireHeld = false; ads = false; for (const k in keys) keys[k] = false; } });
+  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === o.canvas; if (locked && el.start) el.start.hidden = true; if (!locked && invOpen) return; if (!locked && enabled) { el.start && (el.start.hidden = false); fireHeld = false; ads = false; for (const k in keys) keys[k] = false; } });
   document.addEventListener('pointerlockerror', () => { el.start && (el.start.hidden = true); setState('화면을 한 번 더 클릭하면 마우스가 잠겨요'); });
   document.addEventListener('mousemove', e => { if (!enabled) return; let dx = 0, dy = 0; if (locked) { dx = e.movementX; dy = e.movementY; } else if (dragLook) { dx = e.clientX - dragLook.x; dy = e.clientY - dragLook.y; dragLook = { x: e.clientX, y: e.clientY }; } else return;
     if (P.dead) { o.onDeadLook && o.onDeadLook(dx, dy); return; }
@@ -283,13 +356,15 @@ export function createFP(o) {
     if (!locked && e.target === o.canvas) lockNow();
     if (!locked && e.button === 0) dragLook = { x: e.clientX, y: e.clientY };
     if (e.button === 0) { fireHeld = true; tryFire(true); }
-    if (e.button === 2) { if (ads) { ads = false; adsHoldStart = -1; } else { ads = true; adsHoldStart = performance.now(); } } });
-  document.addEventListener('mouseup', e => { if (!enabled) return; if (e.button === 0) { fireHeld = false; dragLook = null; } if (e.button === 2 && adsHoldStart > 0 && performance.now() - adsHoldStart > 260) ads = false; });
+    if (e.button === 2) ads = true; });
+  document.addEventListener('mouseup', e => { if (!enabled) return; if (e.button === 0) { fireHeld = false; dragLook = null; } if (e.button === 2) ads = false; });
   addEventListener('keydown', e => { if (!enabled) return; if (o.onKey && o.onKey(e)) return; if (e.target && e.target.tagName === 'INPUT') return;
     if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'Tab'].includes(e.code)) e.preventDefault();
-    if (keys[e.code]) return; keys[e.code] = true; if (!ctrl()) return;
+    if (keys[e.code]) return; keys[e.code] = true;
+    if ((e.code === 'KeyH' || (e.code === 'Escape' && invOpen)) && enabled && !P.dead && (!o.canControl || o.canControl())) { toggleInv(); return; }
+    if (!ctrl()) return;
     if (e.code === 'KeyR') startReload();
-    if (e.code === 'KeyB' && ws) { const v = invOf(ws.w); v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); updHud(); }
+    if (e.code === 'KeyB' && ws) { const v = invOf(ws.w); if (ws.w.modes.length < 2) setState(ws.w.name + '은(는) ' + ws.w.modes[0] + '만 돼요'); else { v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); setState(ws.w.modes[v.mode]); } updHud(); }
     if (e.code === 'KeyC') P.stance = P.stance === 'crouch' ? 'stand' : 'crouch';
     if (e.code === 'KeyZ') P.stance = P.stance === 'prone' ? 'stand' : 'prone';
     if (e.code === 'Space') { if (P.stance !== 'stand') P.stance = 'stand'; else if (P.onG) { P.vel.y = 4.3; P.onG = false; } }
@@ -311,9 +386,9 @@ export function createFP(o) {
     if (w.act === 'bolt') ws.cycle = { t: 0, dur: 1.05, kind: 'bolt' }; }
   function fireOne(w) {
     const moving = Math.hypot(P.vel.x, P.vel.z) > .5, stM = P.stance === 'crouch' ? .8 : P.stance === 'prone' ? .55 : 1, airM = P.onG ? 1 : 2.2;
-    const grow = 1 + Math.min(14, shotIdx) * .04; const vk = w.vr * D2R * (adsT > .5 ? .85 : 1) * stM * (moving ? 1.25 : 1) * airM * grow * (.85 + Math.random() * .3);
-    P.pitch += vk; recAcc += vk * .55; P.yaw += (Math.random() * 2 - 1) * w.hr * D2R * stM * (.6 + Math.min(1, shotIdx / 6) * .6);
-    kick += .025 + w.rec * .05; kickR += .04 + w.rec * .08; shake = Math.min(1, shake + .25 + w.rec * .4); flashT = .045; snd.shot(w);
+    const F = attFx(w); const grow = 1 + Math.min(14, shotIdx) * .04; const vk = F.vr * w.vr * D2R * (adsT > .5 ? .85 : 1) * stM * (moving ? 1.25 : 1) * airM * grow * (.85 + Math.random() * .3);
+    P.pitch += vk; recAcc += vk * .55; P.yaw += (Math.random() * 2 - 1) * F.hr * w.hr * D2R * stM * (.6 + Math.min(1, shotIdx / 6) * .6);
+    const adsK = 1 - .8 * ease(adsT); kick += (.025 + w.rec * .05) * (1 - .5 * adsT); kickR += (.04 + w.rec * .08) * adsK; shake = Math.min(1, shake + (.25 + w.rec * .4) * adsK * .6); flashT = F.noFlash ? 0 : .045; snd.shot(w, F.quiet ? .3 : 1, F.quiet ? .7 : 0);
     if (w.rig) playOnce(cur, 'shoot'); else blow = .001;
     const hip = (w.pistol ? .03 : w.pel ? 0 : w.act === 'bolt' ? .07 : w.grp === '기관단총' ? .028 : .038);
     const scopedNow = adsT > .6;
@@ -323,18 +398,18 @@ export function createFP(o) {
     const og = new THREE.Vector3(); cam2.getWorldPosition(og); const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam2.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam2.quaternion);
     const tz = 100 / w.vel, lift = (9.8 * tz * tz / 2) / 100; const dirs = [];
-    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, r = (w.pel ? .045 : spread) * Math.sqrt(Math.random());
-      const d = fwd.clone().addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r + lift).normalize(); dirs.push(d.clone());
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, r = (w.pel ? .045 * F.spread : spread) * Math.sqrt(Math.random());
+      const d = fwd.clone().addScaledVector(right, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r * (w.pel ? F.spreadY : 1) + lift).normalize(); dirs.push(d.clone());
       const tr = (w.act === 'bolt' || shotIdx % 3 === 0) && !w.pel; bullets.push({ p: og.clone(), v: d.multiplyScalar(w.vel), t: 0, tr, mesh: null, start: og.clone(), w, mine: true, n: 0 }); }
-    o.onShot && o.onShot(w, og, dirs);
+    o.onShot && o.onShot(w, og, dirs, !!F.quiet);
     if (!w.pel && w.act !== 'bolt') eject(casingMat); }
   function eject(mat) { if (!cur) return; const c = new THREE.Mesh(casingGeo, mat); const p = new THREE.Vector3(); cur.getWorldPosition(p); c.position.copy(p);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam2.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam2.quaternion), back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam2.quaternion);
     c.userData = { v: right.multiplyScalar(2 + Math.random()).addScaledVector(up, 1.6 + Math.random()).addScaledVector(back, .4).add(P.vel.clone().multiplyScalar(.9)), t: 0, s: new THREE.Vector3(Math.random() * 20, Math.random() * 20, 0) }; S2.add(c); casings.push(c); if (casings.length > 40) S2.remove(casings.shift()); }
   // 다른 사람이 쏜 탄(눈으로만 보이는 예광탄)
-  function remoteShot(w, og, dirs, muzzleWorld) {
+  function remoteShot(w, og, dirs, muzzleWorld, quiet) {
     dirs.forEach((d, i) => bullets.push({ p: og.clone(), v: d.clone().multiplyScalar(w.vel), t: 0, tr: w.act === 'bolt' || (!w.pel && Math.random() < .35), mesh: null, start: (muzzleWorld || og).clone(), w, mine: false, n: 0 }));
-    const dist = og.distanceTo(cam2.position); snd.shot(w, Math.max(.05, 1 - dist / 400), Math.min(1, dist / 300)); }
+    const dist = og.distanceTo(cam2.position); snd.shot(w, Math.max(.05, 1 - dist / (quiet ? 120 : 400)) * (quiet ? .35 : 1), Math.min(1, dist / 300 + (quiet ? .6 : 0))); }
   function stepBullets(dt) { for (let i = bullets.length - 1; i >= 0; i--) { const b = bullets[i]; b.t += dt; const p0 = b.p.clone(); b.v.y -= 9.8 * dt; b.p.addScaledVector(b.v, dt);
     const seg = b.p.clone().sub(p0), len = seg.length(); ray.set(p0, seg.normalize()); ray.far = len;
     const list = b.mine ? hitables.concat(o.playerHitboxes ? o.playerHitboxes() : []) : hitables; let hit = ray.intersectObjects(list, false)[0];
@@ -352,14 +427,24 @@ export function createFP(o) {
       for (let i = 0; i < (tg ? 6 : 4); i++) { const s = new THREE.Mesh(chipGeo, tg ? chipMatT : chipMat); s.position.copy(hit.point); s.userData = { v: nrm.clone().multiplyScalar(1.5 + Math.random() * 2).add(new THREE.Vector3((Math.random() - .5) * 2, Math.random() * 2, (Math.random() - .5) * 2)), t: 0 }; S2.add(s); sparks.push(s); }
       if (b.mine && !tg) snd.tone(300 + Math.random() * 200, .04, .02, 'triangle'); }
     if (tg && b.mine) { tg.userData.av += 3 + Math.random() * 2; tg.userData.hits++; snd.ding(); showHit(Math.round(hit.point.distanceTo(b.start)) + 'm'); }
-    if (pl && b.mine) { const head = !!hit.object.userData.head; const dist = hit.point.distanceTo(b.start); const fall = dist > 100 ? Math.max(.5, 1 - (dist - 100) / 400) : 1; snd.hit(); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(pl, Math.round(b.w.dmg * fall), head, b.w.k, hit.point, bdir); } }
+    if (pl && b.mine) { const head = !!hit.object.userData.head, limb = !!hit.object.userData.limb; const dist = hit.point.distanceTo(b.start); const fall = dist > 100 ? Math.max(.5, 1 - (dist - 100) / 400) : 1; const M = ZONE_MUL[wclass(b.w)] || ZONE_MUL.AR;
+      snd.hit(); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(pl, Math.round(b.w.dmg * fall * (head ? M[0] : limb ? M[2] : M[1])), head, b.w.k, hit.point, bdir); } }
   function showHit(t) { hitmT = .25; el.dist.textContent = t; }
   function throwIt() { if (!cur || ws.reload) return; const v = invOf(ws.w); if (v.reserve <= 0) { setState('투척물 없음'); return; }
     const p = new THREE.Vector3(); cur.getWorldPosition(p); const dir = new THREE.Vector3(0, .22, -1).applyQuaternion(cam2.quaternion).normalize();
     const vel = dir.multiplyScalar(17).add(P.vel); spawnThrown(ws.w.k, p, vel, true); o.onThrow && o.onThrow(ws.w.k, p, vel);
     cur.visible = false; ws.reload = { t: 0, dur: 1, kind: 'throw' }; v.reserve--; updHud(); }
   function spawnThrown(k, p, vel, mine, owner) { const m = cache[k]; const c = new THREE.Group(); if (m) c.add(skClone(m.userData.norm)); c.position.copy(p); S2.add(c); c.userData = { v: vel.clone(), t: 0, k, mine, owner }; thrown.push(c); }
-  function boom(p, k, mine, owner) { const cfg = { frag_west: [0xffa040, 5, .55, .95], flashbang_west: [0xffffff, 4, .25, 1], smoke_west: [0x9a9a95, 7, 18, .92], incendiary_east: [0xff5a10, 3, 7, .8] }[k];
+  const smokes = [];
+  function smokeCloud(p) { const parts2 = []; for (let i = 0; i < 46; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: new THREE.Color().setHSL(0, 0, .62 + Math.random() * .2), transparent: true, depthWrite: false, opacity: 0, rotation: Math.random() * 6.28 }));
+      const a = Math.random() * 6.28, r = Math.sqrt(Math.random()); sp.userData = { a, r, h: Math.random(), s: 2.6 + Math.random() * 2.6, rs: (Math.random() - .5) * .3, d: Math.random() * 1.2 }; sp.position.copy(p); S2.add(sp); parts2.push(sp); }
+    smokes.push({ p: p.clone().setY(Math.max(0, p.y - .05)), t: 0, life: 22, parts: parts2 }); }
+  function updSmoke(dt) { for (let i = smokes.length - 1; i >= 0; i--) { const s0 = smokes[i]; s0.t += dt; const grow = Math.min(1, s0.t / 4), fade = Math.min(1, (s0.life - s0.t) / 5);
+      s0.parts.forEach(sp => { const u = sp.userData; const T = Math.max(0, s0.t - u.d); const R = (1.2 + 5.8 * Math.min(1, T / 4)) * u.r; const wob = Math.sin(s0.t * .4 + u.a * 3) * .4;
+        sp.position.set(s0.p.x + Math.cos(u.a + s0.t * .03) * R + wob, s0.p.y + .6 + u.h * (1.2 + 2.6 * Math.min(1, T / 5)) + s0.t * .015, s0.p.z + Math.sin(u.a + s0.t * .03) * R);
+        sp.scale.setScalar(u.s * (.35 + .65 * Math.min(1, T / 3)) * (1 + s0.t * .015)); sp.material.rotation += u.rs * dt; sp.material.opacity = .9 * Math.min(1, T / .6) * fade; });
+      if (s0.t > s0.life) { s0.parts.forEach(sp => { S2.remove(sp); sp.material.dispose(); }); smokes.splice(i, 1); } } }
+  function boom(p, k, mine, owner) { if (k === 'smoke_west') { smokeCloud(p); snd.noise(2.5, 1200, .25, 1.5); return; } const cfg = { frag_west: [0xffa040, 5, .55, .95], flashbang_west: [0xffffff, 4, .25, 1], smoke_west: [0x9a9a95, 7, 18, .92], incendiary_east: [0xff5a10, 3, 7, .8] }[k];
     const m = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: cfg[0], transparent: true, opacity: cfg[3], depthWrite: false, side: k === 'smoke_west' ? THREE.DoubleSide : THREE.FrontSide })); m.position.copy(p); m.userData = { t: 0, life: cfg[2], r: cfg[1], o: cfg[3], k }; S2.add(m); booms.push(m);
     const d = p.distanceTo(cam2.position); snd.boom(Math.max(.1, 1 - d / 200));
     if (k === 'frag_west') { if (d < 25) shake = Math.min(1.5, shake + (25 - d) / 12); targets.forEach(t => { if (t.position.distanceTo(p) < 7) t.userData.av += 6; }); if (mine && o.onFrag) o.onFrag(p); if (o.selfDamage) { const dd = p.distanceTo(P.pos.clone().setY(P.pos.y + .8)); if (dd < 7) o.selfDamage(Math.round(150 * (1 - dd / 7)), 'frag_west', owner); } }
@@ -368,25 +453,37 @@ export function createFP(o) {
       if (amt > 0 && el.flash) { el.flash.style.transition = 'none'; el.flash.style.opacity = Math.min(1, amt * 1.3); requestAnimationFrame(() => { el.flash.style.transition = 'opacity ' + (1 + amt * 3) + 's ease-in'; el.flash.style.opacity = 0; }); snd.tone(3200, 2.5 * amt, .05, 'sine'); } } }
 
   /* ----- 재장전 ----- */
-  function startReload() { if (!ws || ws.reload || ws.draw < 1) return; const w = ws.w; if (w.thr) return; const v = invOf(w); if (v.ammo >= w.mag || reserveOf(w) <= 0) return;
-    ads = false; burstLeft = 0; const empty = v.ammo === 0;
+  function startReload() { if (!ws || ws.reload || ws.draw < 1) return; const w = ws.w; if (w.thr) return; const v = invOf(w); if (v.ammo >= magOf(w) || reserveOf(w) <= 0) return;
+    burstLeft = 0; const empty = v.ammo === 0; const RT = rtOf(w);
     if (w.rig) { const d = playOnce(cur, 'reload') || w.rt; ws.reload = { t: 0, dur: d + (empty ? .3 : 0), kind: 'rig', empty }; }
-    else if (w.act === 'pump') ws.reload = { t: 0, dur: .35, kind: 'shell', empty, phase: 'in' };
-    else ws.reload = { t: 0, dur: w.rt + (empty ? .55 : 0), kind: 'mag', empty, ev: {} };
+    else if (w.act === 'pump') ws.reload = { t: 0, dur: .42 * attFx(w).rt, kind: 'shell', empty, phase: empty ? 'port' : 'in', n: 0 };
+    else ws.reload = { t: 0, dur: RT + (empty ? .55 : 0), kind: 'mag', empty, ev: {}, rt: RT };
     setState(empty ? '재장전 (빈 탄창)' : '재장전'); o.onReload && o.onReload(); }
-  function refill() { const w = ws.w, v = invOf(w); const need = w.mag - v.ammo; v.ammo += takeReserve(w, need); updHud(); }
+  function refill() { const w = ws.w, v = invOf(w); const need = magOf(w) - v.ammo; v.ammo += takeReserve(w, need); updHud(); }
   function reloadPose(dt) { const r = ws.reload, w = ws.w; r.t += dt; const T = r.t, D = r.dur; const out = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 };
     if (r.kind === 'throw') { if (T >= D) { ws.reload = null; ws.draw = 0; if (invOf(w).reserve <= 0) { const k = slots[curSlot]; if (o.onEmptyThrow) o.onEmptyThrow(curSlot, k); } } return out; }
     if (r.kind === 'rig') { if (T >= D) { refill(); ws.reload = null; setState(''); } return out; }
     if (r.kind === 'shell') {
-      const tilt = ease(Math.min(1, T / .2)); out.rz = -.55 * tilt; out.rx = .15 * tilt; out.y = -.03 * tilt; out.x = -.02 * tilt;
-      if (r.phase === 'in') { const u = (T - .15) / .2; const sh = cur.userData.proxy; sh.visible = u > 0 && u < 1; sh.scale.set(.9, .5, .9); sh.material = shellMat; sh.position.y = -cur.userData.size.y * (.15 + .6 * (1 - ease(u)));
-        if (T >= D) { const v = invOf(w); if (reserveOf(w) > 0 && v.ammo < w.mag) { v.ammo += takeReserve(w, 1); snd.mag(); updHud(); } sh.visible = false;
-          if (r.cancel || v.ammo >= w.mag || reserveOf(w) <= 0) { r.phase = r.empty ? 'pump' : 'out'; r.t = 0; r.dur = r.empty ? .5 : .2; } else r.t = .12; } }
+      const U = cur.userData, S = U.size, sh = shellObj(U);
+      const tilt = ease(Math.min(1, (r.tt = (r.tt || 0) + dt) / .22)); out.rz = -.62 * tilt; out.rx = .22 * tilt; out.y = -.035 * tilt; out.x = -.015 * tilt;
+      if (r.phase === 'port') { // 빈 총: 노리쇠 열고 옆 배출구로 한 발
+        const u = T / D; const a = Math.min(ease(u / .3), 1 - ease((u - .75) / .25)); setPart('pump', 'back', .09 * a); out.rz = -.25 * tilt; out.rx = .05;
+        sh.visible = u > .25 && u < .8; sh.position.set(-S.x * .05, U.railY - .02 + .1 * (1 - ease((u - .25) / .45)), S.z * .7 * (1 - ease((u - .25) / .45))); sh.rotation.set(0, 0, 0);
+        if (u > .45 && !r.p1) { r.p1 = 1; snd.mag(); const v = invOf(w); if (reserveOf(w) > 0) { v.ammo += takeReserve(w, 1); updHud(); } }
+        if (u > .8 && !r.p2) { r.p2 = 1; snd.bolt(); shake += .12; }
+        if (T >= D) { sh.visible = false; resetParts(cur); const v = invOf(w); if (r.cancel || v.ammo >= magOf(w) || reserveOf(w) <= 0) { r.phase = 'out'; r.t = 0; r.dur = .25; } else { r.phase = 'in'; r.t = 0; r.dur = .42 * attFx(w).rt; } } return out; }
+      if (r.phase === 'in') { const u = T / D; const lx = -S.x * .04, ly = U.hands.l ? -S.y * .3 : -S.y * .3;
+        // 탄을 아래에서 들어 올려(0~0.55) 엄지로 밀어 넣음(0.55~0.85), 밀 때 총이 살짝 들썩
+        const up = ease(Math.min(1, u / .55)), push = ease(Math.max(0, Math.min(1, (u - .55) / .3)));
+        sh.visible = u < .85; sh.rotation.set(0, 0, 0); sh.position.set(lx - .06 * (1 - up) + .05 * push, ly - .14 * (1 - up), .03 * (1 - up));
+        out.y += -.012 * Math.sin(push * Math.PI); out.rx += .03 * Math.sin(push * Math.PI);
+        if (u >= .8 && !r.ins) { r.ins = 1; const v = invOf(w); if (reserveOf(w) > 0 && v.ammo < magOf(w)) { v.ammo += takeReserve(w, 1); updHud(); } snd.tone(900, .03, .06, 'square'); snd.noise(.05, 3000, .12, 6); }
+        if (T >= D) { r.ins = 0; sh.visible = false; const v = invOf(w);
+          if (r.cancel || v.ammo >= magOf(w) || reserveOf(w) <= 0) { r.phase = r.empty && !r.p2 ? 'pump' : 'out'; r.t = 0; r.dur = r.phase === 'pump' ? .5 : .25; } else { r.t = 0; r.n++; } } }
       else if (r.phase === 'pump') { const u = T / r.dur; const a = u < .5 ? ease(u * 2) : 1 - ease((u - .5) * 2); if (!setPart('pump', 'back', .09 * a)) out.z += .03 * a; if (u > .45 && !r.sn) { r.sn = 1; snd.bolt(); } if (T >= r.dur) { r.phase = 'out'; r.t = 0; r.dur = .2; } }
-      else { const u = 1 - ease(T / r.dur); out.rz = -.55 * u; out.rx = .15 * u; out.y = -.03 * u; if (T >= r.dur) { ws.reload = null; setState(''); resetParts(cur); cur.userData.proxy.material = proxyMat; cur.userData.proxy.scale.set(1, 1, 1); } }
+      else { const u = 1 - ease(T / r.dur); out.rz = -.62 * u; out.rx = .22 * u; out.y = -.035 * u; if (T >= r.dur) { ws.reload = null; setState(''); resetParts(cur); sh.visible = false; } }
       return out; }
-    const pistol = w.pistol, mOut = .3, mIn = w.rt * .42, slap = w.rt * .62, boltS = w.rt * .68, end = D - .28;
+    const RT = r.rt || w.rt, pistol = w.pistol, mOut = .3 * RT / w.rt, mIn = RT * .42, slap = RT * .62, boltS = RT * .68, end = D - .28;
     const tl = Math.min(ease(Math.min(1, T / .28)), 1 - ease((T - end) / .28));
     out.rz = (pistol ? .3 : .38) * tl; out.rx = (pistol ? .2 : .1) * tl; out.y = -.04 * tl; out.x = -.02 * tl; out.ry = -.08 * tl;
     const pr = cur.userData.parts;
@@ -404,11 +501,30 @@ export function createFP(o) {
       if (r.empty && T > boltS && T < boltS + .5) { const u = (T - boltS) / .5; const a = u < .4 ? ease(u / .4) : 1 - ease((u - .4) / .6); const k = pistol ? 'slide' : 'bolt'; if (!setPart(k, 'back', (pistol ? .035 : .07) * a) && !setPart('slide', 'back', .035 * a)) out.z += .02 * a; out.rz -= .25 * a * (pistol ? 0 : 1); if (!r.ev.b && u > .35) { r.ev.b = 1; snd.bolt(); } } }
     if (T >= D) { ws.reload = null; resetParts(cur); setState(''); updHud(); }
     return out; }
+  // 산탄 한 발 모양 (빨간 플라스틱 + 놋쇠 바닥)
+  function shellObj(U) { if (U.shell) return U.shell; const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.CylinderGeometry(.0095, .0095, .055, 12).rotateZ(H), shellMat); b.position.x = .006; g.add(b); const base = new THREE.Mesh(new THREE.CylinderGeometry(.0105, .0105, .014, 12).rotateZ(H), casingMat); base.position.x = -.026; g.add(base); g.visible = false; cur.add(g); U.shell = g; return g; }
   function cyclePose(dt) { const c = ws.cycle; c.t += dt; const u = c.t / c.dur; const out = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 };
     if (c.kind === 'pump') { const a = u < .25 ? 0 : u < .6 ? ease((u - .25) / .35) : 1 - ease((u - .6) / .4); if (!setPart('pump', 'back', .09 * a)) out.z += .04 * a; out.rx = -.05 * a; if (u > .5 && !c.e) { c.e = 1; snd.bolt(); eject(shellMat); } }
-    else { const tl = Math.sin(Math.min(1, u) * Math.PI); out.rz = .35 * tl; out.y = -.02 * tl; const a = u < .3 ? 0 : u < .6 ? ease((u - .3) / .3) : 1 - ease((u - .6) / .3); if (!setPart('bolt', 'back', .09 * a)) out.z += .03 * a; if (u > .55 && !c.e) { c.e = 1; snd.bolt(); eject(casingMat); } if (ads && scopedOptic()) adsT = Math.min(adsT, .5); }
+    else { const tl = Math.sin(Math.min(1, u) * Math.PI) * (1 - .75 * adsT); out.rz = .35 * tl; out.y = -.02 * tl; const a = u < .3 ? 0 : u < .6 ? ease((u - .3) / .3) : 1 - ease((u - .6) / .3); if (!setPart('bolt', 'back', .09 * a)) out.z += .03 * a; if (u > .55 && !c.e) { c.e = 1; snd.bolt(); eject(casingMat); } if (ads && scopedOptic()) adsT = Math.min(adsT, .5); }
     if (c.t >= c.dur) { ws.cycle = null; resetParts(cur); }
     return out; }
+
+  /* ----- 인벤토리 (H): 총마다 조준경·총구·손잡이·탄창·개머리판 ----- */
+  // o.invApi: { owned(slot, w) -> 가진 파츠 목록, equip(w, slot, k), unequip(w, slot) }. 없으면 전부 무제한(사격장).
+  const api = o.invApi || { owned: (slot, w) => slot === 'optic' ? (w.opt || []).filter(k => k !== 'none') : attAllowed(w, slot), equip: (w, slot, k) => slot === 'optic' ? setOptic(w, k) : setAtt(w, slot, k), unequip: (w, slot) => slot === 'optic' ? setOptic(w, 'none') : setAtt(w, slot, null) };
+  function curPart(w, slot) { if (slot === 'optic') { const m = cache[w.k]; return m && m.userData.opticKey !== 'none' ? m.userData.opticKey : null; } return getAtts(w)[slot] || null; }
+  function partName(slot, k) { return slot === 'optic' ? OPTICS[k].name : ATT[k].name; }
+  function renderInv() { const box = document.getElementById('invPanel'); if (!box) return; let h = '<div class="ih"><b>인벤토리</b><span>H 또는 Esc로 닫기 · 칩을 누르면 바로 달거나 바꿔요</span></div><div class="ig">';
+    for (let i = 0; i < 3; i++) { const k = slots[i]; if (!k) { h += `<div class="ic empty"><div class="in"><em>${i + 1}</em>비어 있음</div></div>`; continue; } const w = WK[k];
+      h += `<div class="ic"><div class="in"><em>${i + 1}</em>${w.name}<small>${w.cal} · 탄창 ${magOf(w)}발</small></div>`;
+      for (const slot of ['optic', ...ATT_SLOTS]) { const allowed = slot === 'optic' ? (w.builtin ? [] : (w.opt || []).filter(x => x !== 'none')) : attAllowed(w, slot); if (!allowed.length) continue; const on = curPart(w, slot); const own = api.owned(slot, w).filter(x => x !== on && allowed.includes(x));
+        h += `<div class="is"><span>${SLOT_NAME[slot]}</span><div>` + (on ? `<button class="chip on" data-w="${k}" data-s="${slot}" data-k="">${partName(slot, on)} ✕</button>` : '<i>비어 있음</i>') + own.map(x => `<button class="chip" data-w="${k}" data-s="${slot}" data-k="${x}">${partName(slot, x)}</button>`).join('') + '</div></div>'; }
+      h += '</div>'; }
+    h += '</div>'; const bag = o.invBag ? o.invBag() : ''; if (bag) h += `<div class="ibag">${bag}</div>`; box.innerHTML = h;
+    box.querySelectorAll('button[data-w]').forEach(b => b.onclick = () => { const w = WK[b.dataset.w], sl = b.dataset.s, k = b.dataset.k; if (k) api.equip(w, sl, k); else api.unequip(w, sl); snd.mag(); updHud(); renderInv(); }); }
+  function toggleInv(force) { const box = document.getElementById('invPanel'); if (!box) return; invOpen = force ?? !invOpen; box.hidden = !invOpen; fireHeld = false; ads = false; o.onInvToggle && o.onInvToggle(invOpen);
+    if (invOpen) { renderInv(); if (document.pointerLockElement) document.exitPointerLock(); if (el.start) el.start.hidden = true; }
+    else { lockNow(); if (el.start && !locked) el.start.hidden = false; } }
 
   /* ----- HUD ----- */
   function setState(s) { if (!el.state) return; el.state.textContent = s; stateT = s ? 2.5 : 0; }
@@ -445,13 +561,13 @@ export function createFP(o) {
     if (el.stance) el.stance.textContent = (P.dead ? '사망' : P.stance === 'prone' ? '엎드리기' : P.stance === 'crouch' ? '앉기' : P.sprinting ? '달리기' : '서기') + (Math.abs(P.lean) > .3 ? (P.lean < 0 ? ' · 왼쪽 기울임' : ' · 오른쪽 기울임') : '');
     if (fireHeld) tryFire(false); if (burstLeft > 0 && !fireHeld) tryFire(false);
     if (tnow - lastShot > .18) { if (recAcc > 0) { recPool += recAcc; recAcc = 0; } shotIdx = 0; }
-    if (recPool > 0) { const d = recPool * Math.min(1, dt * 7); P.pitch -= d; recPool -= d; if (recPool < 1e-4) recPool = 0; }
+    if (recPool > 0) { const d = recPool * Math.min(1, dt * 7 * (w ? attFx(w).rec : 1)); P.pitch -= d; recPool -= d; if (recPool < 1e-4) recPool = 0; }
     bloom *= Math.pow(.02, dt);
     const canAds = ws && !(ws.reload && ws.reload.kind !== 'shell') && !P.sprinting && !w.thr && ws.draw >= 1 && can;
-    adsT += (((ads && canAds) ? 1 : 0) - adsT) * Math.min(1, dt * (scopedOptic() ? 9 : 13));
+    adsT += (((ads && canAds) ? 1 : 0) - adsT) * Math.min(1, dt * (scopedOptic() ? 9 : 13) * (w ? attFx(w).ads : 1));
     const zoom = 1 + (adsZoom() - 1) * ease(adsT); cam2.fov = (o.fov || 72) / zoom; cam2.updateProjectionMatrix();
     const scopeOn = scopedOptic() && !w.rig;
-    const swayAmp = (scopeOn ? 1 : .25) * (P.holding ? .08 : 1) * (P.stance === 'prone' ? .35 : P.stance === 'crouch' ? .7 : 1) * adsT;
+    const swayAmp = (w ? attFx(w).sway : 1) * (scopeOn ? 1 : .25) * (P.holding ? .08 : 1) * (P.stance === 'prone' ? .35 : P.stance === 'crouch' ? .7 : 1) * adsT;
     const sx = (Math.sin(tnow * .9) * .6 + Math.sin(tnow * 2.3) * .25) * .0035 * swayAmp, sy = (Math.sin(tnow * 1.3 + 1) * .6 + Math.sin(tnow * .5) * .3) * .003 * swayAmp;
     shake *= Math.pow(.004, dt); const sh = shake * .006;
     const bobY = Math.sin(P.bob * 2) * .03 * (1 - adsT * .8) * (P.sprinting ? 1.6 : 1), bobX = Math.cos(P.bob) * .025 * (1 - adsT * .8);
@@ -463,7 +579,7 @@ export function createFP(o) {
       if (w.rig) { hip = w.k === 'fps_rig' ? [0, -.2, -.42] : [.06, -.27, -.62]; ad = w.k === 'fps_rig' ? [0, -.165, -.36] : [0, -.205, -.5]; }
       else if (w.thr) { hip = [.2, -.2, -.38]; ad = hip; }
       else if (w.pistol) { hip = [.15, -.16, -.4]; ad = [0, op.type && cur.userData.optic ? -(cur.userData.railY - .003 + op.h) : -s.y / 2 - .008, -.36]; }
-      else { hip = [.16, -.13 - s.y * .3, -.22 - len * .3]; const mounted = op.type && cur.userData.optic; ad = [0, mounted ? -(cur.userData.railY - .003 + op.h) : cur.userData.clip ? -(cur.userData.railY + .03) : -s.y / 2 - .012, -len * .5 - .03 + (mounted && op.type !== 'scope' ? .05 : 0)]; }
+      else { hip = [.16, -.13 - s.y * .3, -.22 - len * .3]; const mounted = op.type && cur.userData.optic; ad = [0, mounted ? -(cur.userData.railY - .003 + op.h) : cur.userData.clip ? -(cur.userData.railY + .03) : -(cur.userData.iron ?? s.y / 2 + .012), -len * .5 - .03 + (mounted && op.type !== 'scope' ? .05 : 0)]; }
       const a = ease(adsT); let px = hip[0] + (ad[0] - hip[0]) * a, py = hip[1] + (ad[1] - hip[1]) * a, pz = hip[2] + (ad[2] - hip[2]) * a;
       let rx = 0, ry = 0, rz = 0;
       hipT += ((P.sprinting ? 1 : 0) - hipT) * Math.min(1, dt * 8); const sp2 = ease(hipT); px += -.04 * sp2; py += -.06 * sp2; pz += .04 * sp2; ry += .75 * sp2; rz += .25 * sp2; rx += -.25 * sp2;
@@ -491,7 +607,7 @@ export function createFP(o) {
     stepBullets(dt);
     sparks.forEach(p => { p.userData.t += dt; p.userData.v.y -= 9 * dt; p.position.addScaledVector(p.userData.v, dt); if (p.position.y < .01) { p.position.y = .01; p.userData.v.set(0, 0, 0); } }); for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].userData.t > (sparks[i].userData.blood ? .9 : .5)) { S2.remove(sparks[i]); sparks.splice(i, 1); }
     puffs.forEach(m => { const u = m.userData; u.t += dt; const k = u.t / u.life; m.position.addScaledVector(u.v, dt); m.scale.setScalar(u.size * (.4 + k * .9)); m.material.opacity = .8 * (1 - k); }); for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].userData.t > puffs[i].userData.life) { S2.remove(puffs[i]); puffs[i].material.dispose(); puffs.splice(i, 1); }
-    updArms(dt);
+    updArms(dt); updSmoke(dt);
     casings.forEach(c => { const u = c.userData; u.t += dt; if (c.position.y > .02) { u.v.y -= 9.8 * dt; c.position.addScaledVector(u.v, dt); c.rotation.x += u.s.x * dt; c.rotation.y += u.s.y * dt; } else { c.position.y = .02; if (!u.land) { u.land = 1; snd.tone(4200 + Math.random() * 800, .05, .015, 'sine'); } } });
     targets.forEach(t => { const u = t.userData; u.av -= u.ang * 40 * dt; u.av *= Math.pow(.15, dt); u.ang += u.av * dt; t.rotation.x = -u.ang * .6; });
     thrown.forEach(c => { const u = c.userData; u.t += dt; u.v.y -= 9.8 * dt; const prev = c.position.clone(); c.position.addScaledVector(u.v, dt); c.rotation.x += dt * 8;
@@ -506,7 +622,7 @@ export function createFP(o) {
     for (let i = fires.length - 1; i >= 0; i--) { const f = fires[i]; f.t += dt; if (f.t > f.life) { fires.splice(i, 1); continue; } if (o.selfDamage && !P.dead && Math.hypot(P.pos.x - f.p.x, P.pos.z - f.p.z) < 3 && P.pos.y < 1) { f.acc = (f.acc || 0) + dt; if (f.acc > .5) { f.acc = 0; o.selfDamage(6, 'incendiary_east', f.owner); } } }
   }
   function setEnabled(v) { enabled = v; vmRoot.visible = v; if (!v) { fireHeld = false; ads = false; } }
-  return { get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
+  return { toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
 }
 
 /* ---------- HUD (사격장·배틀로얄 공용) ---------- */
@@ -576,7 +692,15 @@ const HUD_CSS = `
 .start span{font-size:13px;color:#ddd}
 .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 .dmgv{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 120px 30px #b0101099;opacity:0;transition:opacity .4s}
-@media (max-width:820px){.stance .k{display:none}}
+.inv{position:absolute;inset:6% 8%;background:#0d0e0cee;border:1px solid #fff2;pointer-events:auto;overflow:auto;padding:16px;display:grid;gap:12px;align-content:start;font-family:var(--body,system-ui);z-index:6}
+.inv .ih{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}.inv .ih b{font:700 22px var(--display,system-ui);letter-spacing:.04em}.inv .ih span{font-size:12px;color:#aaa}
+.inv .ig{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.inv .ic{border:1px solid #fff2;background:#ffffff08;padding:10px;display:grid;gap:8px;align-content:start}.inv .ic.empty{opacity:.5}
+.inv .in{font:700 17px var(--display,system-ui);display:grid;grid-template-columns:auto 1fr;column-gap:8px}.inv .in em{font:600 11px var(--mono,monospace);color:var(--acc);font-style:normal;grid-row:span 2;align-self:center;border:1px solid var(--acc);padding:2px 6px}.inv .in small{font:500 11px var(--mono,monospace);color:#999}
+.inv .is{display:grid;grid-template-columns:62px 1fr;gap:6px;align-items:start;font-size:12px}.inv .is>span{color:#aaa;padding-top:5px}.inv .is div{display:flex;flex-wrap:wrap;gap:4px}.inv .is i{color:#666;font-style:normal;padding-top:5px}
+.inv .chip{appearance:none;border:1px solid #fff3;background:transparent;color:#eee;font:600 12px var(--body,system-ui);padding:4px 8px;cursor:pointer}.inv .chip:hover{border-color:var(--acc)}.inv .chip.on{background:var(--acc);color:#1a1205;border-color:var(--acc)}
+.inv .ibag{font-size:12px;color:#bbb;line-height:1.7;border-top:1px solid #fff2;padding-top:8px}
+@media (max-width:820px){.stance .k{display:none}.inv{inset:2%}}
 `;
 export function mountHud(container, keysHtml) {
   if (!document.getElementById('core-hud-css')) { const st = document.createElement('style'); st.id = 'core-hud-css'; st.textContent = HUD_CSS; document.head.appendChild(st); }
@@ -591,6 +715,7 @@ export function mountHud(container, keysHtml) {
   <div class="stance"><span id="stanceTxt">서기</span><div class="breath" id="breath" hidden><i id="breathI"></i></div><div class="k">${keysHtml || ''}</div></div>
   <div class="bot"><div class="state" id="stateTxt"></div><div class="ammo"><b id="ammoN">30</b><small id="ammoR">90</small><em id="modeTxt">자동</em></div><div class="hp"><i id="hpI"></i><u id="hpHeal"></u></div></div>
   <div class="slots" id="slotsEl"></div>
-  <div class="start" id="start"><div><b>클릭해서 시작</b><span>마우스로 시선, 좌클릭 사격, 우클릭 조준 (짧게 누르면 고정, 길게 누르면 누르는 동안)</span><span>Esc를 누르면 마우스가 풀려요</span></div></div>`;
+  <div class="inv" id="invPanel" hidden></div>
+  <div class="start" id="start"><div><b>클릭해서 시작</b><span>마우스로 시선, 좌클릭 사격, 우클릭을 누르고 있는 동안 조준, H 인벤토리</span><span>Esc를 누르면 마우스가 풀려요</span></div></div>`;
   container.appendChild(d); return d;
 }

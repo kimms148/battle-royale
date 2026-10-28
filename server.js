@@ -28,6 +28,8 @@ const THROWS = [['frag_west', 5], ['flashbang_west', 3], ['smoke_west', 3], ['in
 const OPTS = [['reddot', 6], ['holo', 5], ['x2', 4], ['x4', 3], ['x8', 1]];
 const MEDW = [['bandage', 8], ['kit', 3], ['med', 1]];
 const ARMW = [['v1', 6], ['v2', 3], ['v3', 1]];
+const ATTW = [['comp_ar', 3], ['flash_ar', 3], ['sup_ar', 1], ['comp_smg', 3], ['flash_smg', 3], ['sup_smg', 2], ['comp_sr', 1], ['flash_sr', 1], ['sup_sr', 1], ['sup_p', 2], ['choke', 2], ['duck', 1],
+  ['grip_v', 4], ['grip_a', 3], ['grip_h', 3], ['grip_t', 3], ['grip_l', 3], ['mag_e_ar', 3], ['mag_q_ar', 3], ['mag_eq_ar', 1], ['mag_e_smg', 3], ['mag_q_smg', 3], ['mag_eq_smg', 1], ['mag_e_sr', 1], ['mag_q_sr', 1], ['mag_eq_sr', 1], ['mag_e_p', 2], ['stock_t', 2], ['cheek', 1], ['loops', 2]];
 const pickW = (R, list) => { const tot = list.reduce((a, b) => a + b[b.length - 1], 0); let r = R() * tot; for (const x of list) { r -= x[x.length - 1]; if (r <= 0) return x; } return list[0]; };
 
 /* ---------- 상태 ---------- */
@@ -44,11 +46,12 @@ function begin() {
   G.map = genMap(G.seed); const R = rng(G.seed ^ 0x5bd1e995);
   for (const [x, y, z] of G.map.loot) {
     const roll = R(); const jx = () => x + (R() - .5) * 1.2, jz = () => z + (R() - .5) * 1.2;
-    if (roll < .32) { const g = pickW(R, GUNS); addLoot('gun', g[0], 1, x, y, z); addLoot('ammo', g[1], AMMO_PACK[g[1]], jx(), y, jz()); }
-    else if (roll < .6) { const g = pickW(R, GUNS); addLoot('ammo', g[1], AMMO_PACK[g[1]], x, y, z); }
-    else if (roll < .74) { const m = pickW(R, MEDW); addLoot('med', m[0], 1, x, y, z); }
-    else if (roll < .82) { const a = pickW(R, ARMW); addLoot('armor', a[0], ARMOR[a[0]].dur, x, y, z); }
-    else if (roll < .91) { const o = pickW(R, OPTS); addLoot('optic', o[0], 1, x, y, z); }
+    if (roll < .3) { const g = pickW(R, GUNS); addLoot('gun', g[0], 1, x, y, z); addLoot('ammo', g[1], AMMO_PACK[g[1]], jx(), y, jz()); }
+    else if (roll < .5) { const g = pickW(R, GUNS); addLoot('ammo', g[1], AMMO_PACK[g[1]], x, y, z); }
+    else if (roll < .64) { const m = pickW(R, MEDW); addLoot('med', m[0], 1, x, y, z); }
+    else if (roll < .72) { const a = pickW(R, ARMW); addLoot('armor', a[0], ARMOR[a[0]].dur, x, y, z); }
+    else if (roll < .85) { const a = pickW(R, ATTW); addLoot('att', a[0], 1, x, y, z); }
+    else if (roll < .93) { const o = pickW(R, OPTS); addLoot('optic', o[0], 1, x, y, z); }
     else { const t = pickW(R, THROWS); addLoot('throw', t[0], 1, x, y, z); }
   }
   const half = MAP.half; G.zone = { cx: 0, cz: 0, r: half * 1.5, ncx: 0, ncz: 0, nr: half * 1.5, ph: 0, st: 'wait', tl: ZONE[0][0], dps: 0, fromR: 0, fromX: 0, fromZ: 0 };
@@ -99,7 +102,7 @@ wss.on('connection', ws => {
       case 'join': p.name = String(m.name || '플레이어').slice(0, 14) || '플레이어'; bcast(lobbyMsg()); break;
       case 'start': if (G.phase === 'lobby' && players.size > 0) begin(); break;
       case 'st': if (!p.alive) break; if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) p.pos = m.p.map(v => Math.max(-MAP.half - 5, Math.min(MAP.half + 5, v))); p.yaw = +m.y || 0; p.pitch = +m.pi || 0; p.s = m.s | 0; p.w = String(m.w || '').slice(0, 24); p.a = m.a ? 1 : 0; break;
-      case 'shot': if (p.alive) bcast({ t: 'shot', id: p.id, w: m.w, o: m.o, d: m.d }, p); break;
+      case 'shot': if (p.alive) bcast({ t: 'shot', id: p.id, w: m.w, o: m.o, d: m.d, q: m.q ? 1 : 0 }, p); break;
       case 'throw': if (p.alive) bcast({ t: 'throw', id: p.id, k: m.k, p: m.p, v: m.v }, p); break;
       case 'hit': { const v = players.get(m.id); if (!v || !p.alive || v === p) break; const dist = Math.hypot(v.pos[0] - p.pos[0], v.pos[2] - p.pos[2]);
         const dmg = Math.max(0, Math.min(260, +m.dmg || 0)); if (dist > 700) break;
