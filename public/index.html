@@ -472,7 +472,7 @@ function tnet(m) {
   switch (m.t) {
     case 'pick': { const g = lootObjs.get(m.id); if (!g) break; const u = g.userData; const item = [u.id, u.type, u.k, u.n, g.position.x, g.position.y, g.position.z];
       if (u.type === 'armor') { if (myArmor) { const id = tLootId--; addLootObj([id, 'armor', myArmor.k, myArmor.dur, fp.P.pos.x + .7, 0, fp.P.pos.z]); } myArmor = { k: u.k, dur: u.n }; updArmor(); }
-      const tb = u.table; gotItem(item); if (tb) setTimeout(() => { if (training) placeTableItem(tb.it, tb.x, tb.y, tb.z); }, 2000); break; }
+      const tb = u.table; gotItem(item); if (u.type === 'gun') { const gw = WK[u.k]; fp.invOf(gw).ammo = gw.mag; ammoPool[gw.cal] = Math.max(ammoPool[gw.cal] || 0, gw.mag * 3); fp.updHud(); } if (tb) setTimeout(() => { if (training) placeTableItem(tb.it, tb.x, tb.y, tb.z); }, 2000); break; }
     case 'drop': (m.items || []).forEach((it, i) => { const id = tLootId--; addLootObj([id, it.type, it.k, it.n, fp.P.pos.x + Math.cos(fp.P.yaw + Math.PI + i) * .9, 0, fp.P.pos.z - Math.sin(fp.P.yaw + Math.PI + i) * .9]); }); break;
     case 'hit': { const d = dummies.find(x => x.id === m.id); if (!d || !d.alive) break; let dmg = m.dmg, arm = false; if (!m.head && d.arm) { const r = armorHit(d.arm, dmg); dmg = r.dmg; d.arm = r.armor; arm = true; if (!d.arm) setVest(d.av, 0); }
       d.hp -= dmg; dmgNum(lastHitPt[m.id], dmg, m.head, arm); if (d.hp <= 0) { d.alive = false; d.deadT = 0; $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1000); kills++; $('killN').textContent = kills; } break; }
