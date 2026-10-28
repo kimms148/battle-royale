@@ -50,3 +50,31 @@ export const ZONE = [[60, 40, 190, 1], [50, 35, 115, 2], [40, 30, 60, 4], [35, 2
 // 아이템 종류
 export const AMMO_PACK = { '7.62mm': 30, '5.56mm': 30, '5.45mm': 30, '4.6mm': 40, '9mm': 30, '.45 ACP': 25, '12게이지': 10, '.300 매그넘': 10 };
 export const MEDS = { bandage: { name: '붕대', key: 'Digit7', heal: 10, cap: 75, t: 4 }, kit: { name: '구급상자', key: 'Digit8', heal: 75, cap: 75, t: 6 }, med: { name: '의료용 키트', key: 'Digit9', heal: 100, cap: 100, t: 8 } };
+
+// 방탄복: 몸통 피해를 줄이고, 받은 만큼 내구도가 닳음 (머리는 못 막음)
+export const ARMOR = { v1: { name: '방탄복 1레벨', lvl: 1, red: .3, dur: 200, col: 0x7a7458 }, v2: { name: '방탄복 2레벨', lvl: 2, red: .4, dur: 220, col: 0x4a5638 }, v3: { name: '방탄복 3레벨', lvl: 3, red: .55, dur: 250, col: 0x23282a } };
+export function armorHit(armor, dmg) { if (!armor || armor.dur <= 0) return { dmg, armor }; const A = ARMOR[armor.k]; const absorbed = dmg * A.red; const left = Math.max(0, armor.dur - dmg); return { dmg: dmg - absorbed, armor: left > 0 ? { k: armor.k, dur: left } : null, broke: left <= 0 }; }
+
+// 훈련장: 무기 테이블, 거리별 사로, 허수아비 구역, 실내 교전용 건물
+export function trainingMap() {
+  const boxes = [], B = (x, y, z, w, h, d, m) => boxes.push([x, y, z, w, h, d, m]);
+  const wall = (x0, z0, x1, z1, h, mat, door) => { const t = .3, horiz = Math.abs(z1 - z0) < .01, L = horiz ? x1 - x0 : z1 - z0, s0 = horiz ? x0 : z0;
+    const seg = (a, b, y0, y1) => { const c = (a + b) / 2, len = b - a; if (len < .05) return; if (horiz) B(c, (y0 + y1) / 2, z0, len, y1 - y0, t, mat); else B(x0, (y0 + y1) / 2, c, t, y1 - y0, len, mat); };
+    if (!door) { seg(s0, s0 + L, 0, h); return; } const dc = s0 + L * door; seg(s0, dc - .7, 0, h); seg(dc + .7, s0 + L, 0, h); seg(dc - .7, dc + .7, 2.3, h); };
+  // 사로 경계 (낮은 벽)
+  for (let z = 28; z > -320; z -= 12) { B(-12, .6, z - 6, .4, 1.2, 11.6, 'plaster'); B(12, .6, z - 6, .4, 1.2, 11.6, 'plaster'); }
+  // 사격 위치 엄폐물
+  B(-6, .45, 26, 3, .9, .5, 'crate'); B(6, .45, 26, 3, .9, .5, 'crate'); B(-9, 1.1, 20, 1.2, 2.2, 1.2, 'cont1');
+  // 무기 테이블 두 줄
+  const items = [];
+  // 실내 교전 건물 (방 4개, 문 여러 개)
+  const hx = -40, hz = -20, hw = 18, hd = 14, hh = 3.2;
+  wall(hx - hw / 2, hz - hd / 2, hx + hw / 2, hz - hd / 2, hh, 'brick', .3); wall(hx - hw / 2, hz + hd / 2, hx + hw / 2, hz + hd / 2, hh, 'brick', .7);
+  wall(hx - hw / 2, hz - hd / 2, hx - hw / 2, hz + hd / 2, hh, 'brick', .5); wall(hx + hw / 2, hz - hd / 2, hx + hw / 2, hz + hd / 2, hh, 'brick', .5);
+  wall(hx - hw / 2 + .3, hz, hx + hw / 2 - .3, hz, hh, 'plaster', .25); wall(hx, hz - hd / 2 + .3, hx, hz + hd / 2 - .3, hh, 'plaster', .7);
+  B(hx, hh + .15, hz, hw + .4, .3, hd + .4, 'roof');
+  // 허수아비 구역 엄폐물
+  B(40, .5, -12, 2, 1, .5, 'crate'); B(48, 1.3, -28, 6, 2.6, 2.4, 'cont2'); B(36, .55, -40, 1.1, 1.1, 1.1, 'crate');
+  return { seed: 0, boxes, rocks: [[60, 20, 2, 1], [-60, 10, 2.4, 2]], trees: [[25, 40, 8, 0], [-25, 44, 9, 1], [70, -60, 10, 0], [-70, -70, 9, 0]], loot: [], towns: [['사로', 0, -150], ['무기 테이블', 0, 46], ['허수아비', 45, -10], ['실내 교전', -40, -32]], free: () => true,
+    spawn: [0, 0, 32], tables: { z1: 37, z2: 41 }, targets: [[10, .35], [25, .4], [50, .5], [100, .6], [150, .7], [200, .8], [300, 1]], dummies: [[34, -8, null], [40, -18, 'v1'], [46, -6, 'v2'], [54, -16, 'v3'], [42, -36, null, 1], [31, -24, null, 0, 1]] };
+}

@@ -66,7 +66,15 @@ input[type=range]{accent-color:var(--accent)}
 .bigmap{position:fixed;inset:0;display:grid;place-items:center;background:#000a;z-index:8;pointer-events:none}
 .bigmap canvas{width:min(86vh,92vw);height:min(86vh,92vw);border:1px solid #fff4}
 .kc{position:absolute;left:50%;top:calc(50% + 110px);transform:translateX(-50%);font:700 22px var(--display);color:var(--warn);text-shadow:0 1px 4px #000;opacity:0;transition:opacity .4s}
-@media (max-width:820px){#mini{width:120px;height:120px}.ztxt{top:138px}}
+.armor{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;font:600 11px var(--mono);color:#fff;text-shadow:0 1px 2px #000}
+.armor div{width:90px;height:5px;background:#0009;border:1px solid #fff3}.armor i{display:block;height:100%;background:#8fb4d9}
+.dnum{position:absolute;font:700 18px var(--display);color:#fff;text-shadow:0 1px 3px #000,0 0 2px #000;pointer-events:none;transform:translate(-50%,-50%);animation:dn .9s ease-out forwards}
+.dnum.h{color:#ffd36a;font-size:22px}.dnum.a{color:#8fc1ff}
+@keyframes dn{from{opacity:1;margin-top:0}to{opacity:0;margin-top:-46px}}
+.trainbar{position:absolute;left:16px;top:212px;display:grid;gap:6px;pointer-events:auto}
+.trainbar .btn{padding:6px 12px;font-size:13px}
+.trainbar span{font:600 11px var(--mono);color:#fffc;text-shadow:0 1px 2px #000;max-width:240px;line-height:1.6}
+@media (max-width:820px){#mini{width:120px;height:120px}.ztxt{top:138px}.trainbar{top:160px}}
 </style>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
@@ -84,6 +92,9 @@ input[type=range]{accent-color:var(--accent)}
     <div class="feed" id="feed"></div>
   </div>
   <div class="pick" id="pick" hidden><b>F</b><span id="pickT"></span></div>
+  <div class="armor" id="armorUi" hidden><span id="armorT">방탄복</span><div><i id="armorI"></i></div></div>
+  <div class="trainbar" id="trainbar" hidden><button class="btn ghost" id="leaveTrain">훈련장 나가기 (L)</button><span>뒤쪽 테이블에 모든 총·조준경·탄·회복템·방탄복이 있어요. 주우면 2초 뒤 다시 생겨요. 오른쪽은 허수아비, 왼쪽은 실내 교전 건물이에요.</span></div>
+  <div id="dnums"></div>
   <div class="bag" id="bag"></div>
   <div class="healbar" id="healbar" hidden><span id="healT"></span><div><i id="healI"></i></div></div>
   <div class="kc" id="kc"></div>
@@ -107,7 +118,7 @@ input[type=range]{accent-color:var(--accent)}
       <div class="label">모델 불러오기</div>
       <div class="prog"><i id="progI"></i></div>
     </div>
-    <div class="row"><button class="btn" id="startBtn" disabled>게임 시작</button><span class="note" id="startNote">모두 들어오면 아무나 눌러서 시작해요.</span></div>
+    <div class="row"><button class="btn" id="startBtn" disabled>게임 시작</button><button class="btn ghost" id="trainBtn" disabled>훈련장</button><span class="note" id="startNote">모두 들어오면 아무나 눌러서 시작해요.</span></div>
     <div class="row"><span class="label">마우스 감도</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="1"><span class="note" id="sensT">1.00</span></div>
     <dl class="keys">
       <dt>WASD · Shift</dt><dd>이동 · 달리기 (조준경 보면서 Shift는 숨 참기)</dd>
@@ -129,7 +140,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { W, WK, OPTICS, getModel, createFP, mountHud, thirdPersonGun, setModelBase, cachedModel, snd, ac, buildOptic, attachOptic } from './core.js';
-import { genMap, MAP, MEDS } from './mapgen.js';
+import { genMap, MAP, MEDS, ARMOR, armorHit, trainingMap } from './mapgen.js';
 
 const $ = id => document.getElementById(id);
 const H = Math.PI / 2;
@@ -157,7 +168,7 @@ const mapG = new THREE.Group(); S.add(mapG);
 const hitables = [ground], solids = [];
 let MAPD = null, staticLayer = null;
 function buildMap(seed) {
-  mapG.clear(); solids.length = 0; MAPD = genMap(seed);
+  mapG.clear(); solids.length = 0; MAPD = typeof seed === 'object' ? seed : genMap(seed);
   const byMat = {};
   for (const [x, y, z, w, h, d, m] of MAPD.boxes) { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); (byMat[m] = byMat[m] || []).push(g); solids.push(new THREE.Box3(new THREE.Vector3(x - w / 2, y - h / 2, z - d / 2), new THREE.Vector3(x + w / 2, y + h / 2, z + d / 2))); }
   for (const m in byMat) { const mesh = new THREE.Mesh(mergeGeometries(byMat[m]), new THREE.MeshStandardMaterial({ color: MATS[m], roughness: m === 'metal' || m.startsWith('cont') ? .6 : .95, metalness: m === 'metal' || m.startsWith('cont') ? .35 : 0 })); mesh.castShadow = mesh.receiveShadow = true; mapG.add(mesh); byMat[m].forEach(g => g.dispose()); }
@@ -189,25 +200,27 @@ function rayStatic(o, d, far) { let best = far, bn = null;
 /* ---------- 1인칭 ---------- */
 const keysHtml = '<b>F</b>줍기 <b>7</b><b>8</b><b>9</b>회복 <b>M</b>지도 <b>G</b>버리기 <b>R</b>장전 <b>B</b>사격 방식 <b>C</b>/<b>Z</b>자세 <b>Q</b>/<b>E</b>기울이기';
 const fpEl = mountHud(stage, keysHtml);
+const trainTargets = [], dummies = []; let training = false, myArmor = null;
 const ammoPool = {}; const meds = { bandage: 0, kit: 0, med: 0 }; const opticOn = {}; const opticBag = [];
 let heal = null, myHp = 100, myId = 0, phase = 'lobby', alive = false, kills = 0;
 const remotes = new Map();
 const fp = createFP({ scene: S, cam, canvas: cv, hitables, solids, bounds: { minX: -MAP.half + .8, maxX: MAP.half - .8, minZ: -MAP.half + .8, maxZ: MAP.half - .8 }, slots: [null, null, null, null], ammoPool, startFull: false, startThrow: 0, fov: 74,
-  sens: () => +$('sens').value, rayStatic, healing: () => !!heal,
-  playerHitboxes: () => { const a = []; for (const r of remotes.values()) if (r.alive && r.av) a.push(...r.av.userData.hit); return a; },
-  canControl: () => alive && phase === 'live',
+  sens: () => +$('sens').value, rayStatic, healing: () => heal, targets: trainTargets,
+  playerHitboxes: () => { const a = []; for (const r of remotes.values()) if (r.alive && r.av) a.push(...r.av.userData.hit); for (const d of dummies) if (d.alive) a.push(...d.av.userData.hit); return a; },
+  canControl: () => alive && (phase === 'live' || phase === 'train'),
   onShot: (w, og, dirs) => net({ t: 'shot', w: w.k, o: v3(og), d: dirs.map(v3) }),
   onThrow: (k, p, v) => { net({ t: 'throw', k, p: v3(p), v: v3(v) }); sendInv(); },
-  onHitPlayer: (id, dmg, head, wk) => net({ t: 'hit', id, dmg: Math.round(dmg * (head ? 2 : 1)), head, w: wk }),
+  onHitPlayer: (id, dmg, head, wk, pt, d) => { lastHitPt[id] = pt && pt.clone(); net({ t: 'hit', id, dmg: Math.round(dmg * (head ? 2 : 1)), head, w: wk, pt: pt && v3(pt), d: d && v3(d) }); },
   selfDamage: (dmg, kind, owner) => { if (alive) net({ t: 'self', dmg, kind, by: owner || myId }); },
   onEmptyThrow: (slot, k) => { const next = ['frag_west', 'flashbang_west', 'smoke_west', 'incendiary_east'].find(t => fp.invOf(WK[t]).reserve > 0); fp.slots[3] = next || null; if (next) fp.equip(3); else fp.holster(); fp.renderSlots(); sendInv(); },
   onKey, onDeadLook: (dx) => { specYaw -= dx * .003; },
 });
+const lastHitPt = {};
 const v3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 
 /* ---------- 네트워크 ---------- */
 let ws = null, ping = 0;
-function net(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+function net(m) { if (training) return tnet(m); if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function connect() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   ws.onopen = () => { $('lstat').textContent = '서버 연결됨'; net({ t: 'join', name: nick() }); };
@@ -224,6 +237,7 @@ setInterval(() => net({ t: 'ping', c: performance.now() }), 2000);
 
 let lastLobby = null;
 function onMsg(m) {
+  if (training && ['snap', 'shot', 'throw', 'blood', 'loot+', 'loot-', 'got', 'hp', 'kill', 'win', 'armor', 'dealt'].includes(m.t)) return;
   switch (m.t) {
     case 'hello': myId = m.id; lastSeed = m.seed; updLobbyBtn(); break;
     case 'lobby': lastLobby = m; renderLobby(m); break;
@@ -233,13 +247,15 @@ function onMsg(m) {
     case 'throw': fp.spawnThrown(m.k, new THREE.Vector3(...m.p), new THREE.Vector3(...m.v), false, m.id); break;
     case 'hp': { const prev = myHp; myHp = m.hp; updHp(); if (m.hp < prev && !m.heal) { snd.hurt(); $('dmgv').style.transition = 'none'; $('dmgv').style.opacity = Math.min(1, (prev - m.hp) / 30 + .3); requestAnimationFrame(() => { $('dmgv').style.transition = 'opacity .8s'; $('dmgv').style.opacity = 0; }); fp.punchShake(.3);
         if (m.from) { const a = Math.atan2(m.from[0] - fp.P.pos.x, m.from[1] - fp.P.pos.z); const rel = a - (fp.P.yaw + Math.PI); $('hurt').style.transform = `rotate(${-rel}rad)`; $('hurt').style.transition = 'none'; $('hurt').style.opacity = 1; requestAnimationFrame(() => { $('hurt').style.transition = 'opacity 1.4s'; $('hurt').style.opacity = 0; }); } } break; }
-    case 'dealt': if (m.kill) { $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1200); } break;
+    case 'dealt': dmgNum(lastHitPt[m.id], m.dmg, m.head); if (m.kill) { $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1200); } break;
     case 'kill': onKill(m); break;
     case 'win': onWin(m); break;
     case 'reset': lastSeed = m.seed; toLobby(); break;
     case 'loot+': m.items.forEach(addLootObj); break;
     case 'loot-': removeLoot(m.id); break;
     case 'got': gotItem(m.item); break;
+    case 'blood': fp.blood(new THREE.Vector3(...m.p), new THREE.Vector3(...m.d), m.head); break;
+    case 'armor': myArmor = m.a; updArmor(); if (m.broke) fp.setState('방탄복이 부서졌어요'); break;
     case 'pong': ping = Math.round(performance.now() - m.c); $('pingT').textContent = 'ping ' + ping + 'ms'; break;
   }
 }
@@ -247,7 +263,7 @@ function renderLobby(m) {
   $('plist').innerHTML = m.players.map(p => `<div>${esc(p.name)}${p.id === myId ? ' (나)' : ''}<span>${m.phase === 'lobby' ? '대기' : p.inGame ? (p.alive ? '생존' : '사망') + ' · 처치 ' + p.kills : '관전'}</span></div>`).join('') || '<div><span>아무도 없어요</span></div>';
   updLobbyBtn();
 }
-function updLobbyBtn() { const ok = modelsReady && lastLobby && lastLobby.phase === 'lobby'; $('startBtn').disabled = !ok; $('startNote').textContent = !modelsReady ? '모델을 불러오는 중이에요.' : lastLobby && lastLobby.phase !== 'lobby' ? '게임이 진행 중이에요. 끝나면 로비로 돌아와요.' : '모두 들어오면 아무나 눌러서 시작해요.';
+function updLobbyBtn() { const ok = modelsReady && lastLobby && lastLobby.phase === 'lobby'; $('startBtn').disabled = !ok; $('trainBtn').disabled = !modelsReady; $('startNote').textContent = !modelsReady ? '모델을 불러오는 중이에요.' : lastLobby && lastLobby.phase !== 'lobby' ? '게임이 진행 중이에요. 끝나면 로비로 돌아와요.' : '모두 들어오면 아무나 눌러서 시작해요.';
   if (lastLobby && lastLobby.phase !== 'lobby' && phase === 'lobby' && modelsReady) { $('startNote').innerHTML = '게임이 진행 중이에요. <button class="btn ghost" id="watchBtn" style="padding:4px 10px">관전하기</button>'; $('watchBtn').onclick = startSpectate; } }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -256,8 +272,9 @@ let modelsReady = false;
 (async () => { const list = W.filter(w => !w.rig); let n = 0; await Promise.all(list.map(w => getModel(w).then(() => { n++; $('progI').style.width = (n / list.length * 100) + '%'; }))); modelsReady = true; updLobbyBtn(); })();
 
 /* ---------- 게임 흐름 ---------- */
-function resetInv() { fp.slots.fill(null); fp.holster(); for (const k in ammoPool) delete ammoPool[k]; for (const k in meds) meds[k] = 0; for (const k in opticOn) delete opticOn[k]; opticBag.length = 0; W.forEach(w => { const v = fp.invOf(w); v.ammo = 0; v.reserve = 0; v.mode = 0; }); heal = null; }
+function resetInv() { fp.slots.fill(null); fp.holster(); for (const k in ammoPool) delete ammoPool[k]; for (const k in meds) meds[k] = 0; for (const k in opticOn) delete opticOn[k]; opticBag.length = 0; W.forEach(w => { const v = fp.invOf(w); v.ammo = 0; v.reserve = 0; v.mode = 0; }); heal = null; myArmor = null; updArmor(); }
 function beginGame(m) {
+  if (training) leaveTraining(true);
   buildMap(m.seed); clearLoot(); m.loot.forEach(addLootObj); resetInv(); kills = 0; $('killN').textContent = 0;
   for (const r of remotes.values()) removeAvatar(r); remotes.clear();
   phase = 'live'; alive = true; myHp = 100; updHp(); fp.P.dead = false; fp.P.pos.set(...m.spawn); fp.P.vel.set(0, 0, 0); fp.P.yaw = Math.random() * 6.28; fp.P.pitch = 0; fp.P.stance = 'stand';
@@ -284,13 +301,14 @@ cv.addEventListener('click', () => { if (spectating) nextSpec(); });
 const lootObjs = new Map(); const lootG = new THREE.Group(); S.add(lootG);
 const CAL_COL = { '7.62mm': 0x8a6a2a, '5.56mm': 0x4f6a3a, '5.45mm': 0x5f6a3a, '4.6mm': 0x3a5a6a, '9mm': 0xa08a40, '.45 ACP': 0x6a4a6a, '12게이지': 0xa03028, '.300 매그넘': 0x303a4a };
 const medTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#eee'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#c22'; g.fillRect(26, 10, 12, 44); g.fillRect(10, 26, 44, 12); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
-const ringGeo = new THREE.RingGeometry(.28, .36, 24).rotateX(-H); const ringMat = { gun: 0xe0902c, ammo: 0x9cc46a, med: 0xffffff, optic: 0x6ab4ff, throw: 0xd65a3a };
-function itemName(t, k, n) { return t === 'gun' ? WK[k].name : t === 'ammo' ? `${k} 탄 ${n}발` : t === 'med' ? MEDS[k].name + (n > 1 ? ' ×' + n : '') : t === 'optic' ? OPTICS[k].name + ' 조준경' : t === 'throw' ? WK[k].ko + (n > 1 ? ' ×' + n : '') : k; }
+const ringGeo = new THREE.RingGeometry(.28, .36, 24).rotateX(-H); const ringMat = { gun: 0xe0902c, ammo: 0x9cc46a, med: 0xffffff, optic: 0x6ab4ff, throw: 0xd65a3a, armor: 0xb08ad6 };
+function itemName(t, k, n) { if (t === 'armor') return `${ARMOR[k].name} (내구도 ${n})`; return t === 'gun' ? WK[k].name : t === 'ammo' ? `${k} 탄 ${n}발` : t === 'med' ? MEDS[k].name + (n > 1 ? ' ×' + n : '') : t === 'optic' ? OPTICS[k].name + ' 조준경' : t === 'throw' ? WK[k].ko + (n > 1 ? ' ×' + n : '') : k; }
 function addLootObj(a) { const [id, type, k, n, x, y, z] = a; if (lootObjs.has(id)) return; const g = new THREE.Group(); g.position.set(x, y + .02, z);
   let o;
   if (type === 'gun' || type === 'throw') { o = thirdPersonGun(WK[k]) || new THREE.Mesh(new THREE.BoxGeometry(.6, .1, .1), new THREE.MeshStandardMaterial({ color: 0x333333 })); if (type === 'gun') { o.rotation.x = H; o.position.y = .05; } else o.position.y = .06; o.rotation.y = (id * 1.7) % 6.28; }
   else if (type === 'ammo') { o = new THREE.Mesh(new THREE.BoxGeometry(.28, .16, .18), new THREE.MeshStandardMaterial({ color: CAL_COL[k] || 0x556b2f, roughness: .7 })); o.position.y = .08; o.rotation.y = id % 3; }
   else if (type === 'med') { o = new THREE.Mesh(new THREE.BoxGeometry(k === 'med' ? .34 : k === 'kit' ? .26 : .16, k === 'bandage' ? .06 : .14, k === 'med' ? .24 : .18), new THREE.MeshStandardMaterial({ map: medTex, roughness: .6 })); o.position.y = .07; }
+  else if (type === 'armor') { o = new THREE.Group(); const mt = new THREE.MeshStandardMaterial({ color: ARMOR[k].col, roughness: .8 }); const b1 = new THREE.Mesh(new THREE.BoxGeometry(.5, .08, .38), mt); b1.position.y = .04; const b2 = new THREE.Mesh(new THREE.BoxGeometry(.3, .03, .2), new THREE.MeshStandardMaterial({ color: 0x1a1a1a })); b2.position.y = .09; o.add(b1, b2); for (let i = 0; i < ARMOR[k].lvl; i++) { const st = new THREE.Mesh(new THREE.BoxGeometry(.04, .02, .3), new THREE.MeshStandardMaterial({ color: 0xd8c27a })); st.position.set(-.15 + i * .06, .09, 0); o.add(st); } }
   else { o = buildOptic(k); o.scale.setScalar(1.6); o.position.y = .01; }
   g.add(o);
   const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: ringMat[type], transparent: true, opacity: .55, depthWrite: false })); ring.position.y = .01; g.add(ring);
@@ -335,7 +353,8 @@ function renderBag() { const rows = []; for (const k in meds) rows.push(`<span><
 let mapHeld = false;
 function onKey(e) {
   if (e.code === 'KeyM') { mapHeld = true; $('bigmap').hidden = false; return true; }
-  if (!alive || phase !== 'live') return false;
+  if (e.code === 'KeyL' && training) { leaveTraining(); return true; }
+  if (!alive || (phase !== 'live' && !training)) return false;
   if (e.code === 'KeyF' && !e.repeat) { if (nearLoot && performance.now() > pickWait) { pickWait = performance.now() + 250; net({ t: 'pick', id: nearLoot.userData.id }); } return true; }
   if (e.code === 'KeyG' && !e.repeat) { dropCurrent(); return true; }
   const mk = { Digit7: 'bandage', Digit8: 'kit', Digit9: 'med' }[e.code];
@@ -355,7 +374,7 @@ function makeAvatar(id, name) {
   const legL = new THREE.Group(), legR = new THREE.Group(); legL.position.set(-.11, .9, 0); legR.position.set(.11, .9, 0); body.add(legL, legR);
   part(new THREE.BoxGeometry(.17, .9, .2), dark, 0, -.45, 0, legL); part(new THREE.BoxGeometry(.17, .9, .2), dark, 0, -.45, 0, legR);
   const upper = new THREE.Group(); upper.position.y = .95; body.add(upper);
-  part(new THREE.BoxGeometry(.46, .6, .26), cloth, 0, .3, 0, upper); part(new THREE.BoxGeometry(.48, .4, .3), vest, 0, .32, 0, upper);
+  part(new THREE.BoxGeometry(.46, .6, .26), cloth, 0, .3, 0, upper); const vestMesh = part(new THREE.BoxGeometry(.5, .42, .32), vest, 0, .32, 0, upper); vestMesh.visible = false;
   part(new THREE.SphereGeometry(.13, 14, 10), skin, 0, .74, 0, upper, true); part(new THREE.SphereGeometry(.14, 14, 8, 0, Math.PI * 2, 0, 1.4), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(hue, .3, .25) }), 0, .77, 0, upper, true);
   const arms = new THREE.Group(); arms.position.set(0, .5, 0); upper.add(arms);
   const aR = part(new THREE.BoxGeometry(.1, .1, .5), cloth, .2, -.05, -.22, arms), aL = part(new THREE.BoxGeometry(.1, .1, .55), cloth, -.08, -.08, -.3, arms); aL.rotation.y = .5;
@@ -365,7 +384,7 @@ function makeAvatar(id, name) {
   // 이름표
   const c = document.createElement('canvas'); c.width = 256; c.height = 48; const g = c.getContext('2d'); g.font = '600 26px "IBM Plex Sans KR",sans-serif'; g.textAlign = 'center'; g.lineWidth = 5; g.strokeStyle = '#000'; g.strokeText(name, 128, 34); g.fillStyle = '#fff'; g.fillText(name, 128, 34);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })); tag.scale.set(1.2, .225, 1); tag.position.y = 2.05; root.add(tag);
-  root.userData = { body, upper, arms, legL, legR, gunHold, gunTip, gun: null, gunK: '', hit, tag, fl };
+  root.userData = { body, upper, arms, legL, legR, gunHold, gunTip, gun: null, gunK: '', hit, tag, fl, vest: vestMesh, vestLvl: 0 };
   S.add(root); return root;
 }
 function setAvGun(av, k) { const U = av.userData; if (U.gunK === k) return; U.gunK = k; if (U.gun) U.gunHold.remove(U.gun); U.gun = null; const w = WK[k]; if (!w) return; const g = thirdPersonGun(w); if (!g) return; g.rotation.y = H; if (w.thr) g.position.set(0, 0, 0); else g.position.set(0, 0, w.len * .1); U.gunHold.add(g); U.gun = g; U.gunTip.position.set(0, .03, -(w.len * .6)); }
@@ -374,9 +393,9 @@ let zone = null;
 function onSnap(m) {
   const now = performance.now(); zone = m.z; $('aliveN').textContent = m.alive;
   const seen = new Set();
-  for (const a of m.ps) { const [id, x, y, z, yaw, pitch, s, w, al, ads] = a; seen.add(id); if (id === myId) { if (!al && alive && phase === 'live') { /* 서버 기준 사망 */ } continue; }
+  for (const a of m.ps) { const [id, x, y, z, yaw, pitch, s, w, al, ads, arm] = a; seen.add(id); if (id === myId) { if (!al && alive && phase === 'live') { /* 서버 기준 사망 */ } continue; }
     let r = remotes.get(id); if (!r) { const pl = lastLobby && lastLobby.players.find(p => p.id === id); r = { id, name: pl ? pl.name : '?', buf: [], alive: true, av: null, step: 0, flash: 0 }; remotes.set(id, r); }
-    r.buf.push({ t: now, x, y, z, yaw, pitch, s, w, ads }); if (r.buf.length > 30) r.buf.shift(); r.alive = !!al; }
+    r.buf.push({ t: now, x, y, z, yaw, pitch, s, w, ads, arm: arm || 0 }); if (r.buf.length > 30) r.buf.shift(); r.alive = !!al; }
   for (const [id, r] of remotes) if (!seen.has(id)) { removeAvatar(r); remotes.delete(id); }
 }
 const _a = new THREE.Vector3();
@@ -385,7 +404,7 @@ function updRemotes(dt) { const rt = performance.now() - 110;
     const x = s0.x + (s1.x - s0.x) * u, y = s0.y + (s1.y - s0.y) * u, z = s0.z + (s1.z - s0.z) * u; let dy = s1.yaw - s0.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); const yaw = s0.yaw + dy * u, pitch = s0.pitch + (s1.pitch - s0.pitch) * u;
     if (!r.av) { const pl = lastLobby && lastLobby.players.find(p => p.id === r.id); if (pl) r.name = pl.name; r.av = makeAvatar(r.id, r.name); }
     const A = r.av, U = A.userData; const spd = r.lx !== undefined ? Math.hypot(x - r.lx, z - r.lz) / Math.max(dt, 1e-3) : 0; r.lx = x; r.lz = z; r.x = x; r.y = y; r.z = z; r.yaw = yaw; r.pitch = pitch;
-    A.position.set(x, y, z); A.rotation.y = yaw; setAvGun(A, s1.w);
+    A.position.set(x, y, z); A.rotation.y = yaw; setAvGun(A, s1.w); setVest(A, s1.arm);
     if (!r.alive) { U.body.rotation.x = Math.min(H, (U.body.rotation.x || 0) + dt * 4); U.body.position.y = .15; U.tag.visible = false; U.fl.visible = false; continue; }
     U.body.rotation.x = s1.s === 2 ? -H * .98 : 0; U.body.position.y = s1.s === 2 ? .2 : 0; U.body.position.z = s1.s === 2 ? .9 : 0; const cr = s1.s === 1; U.body.scale.y = 1; U.legL.scale.y = U.legR.scale.y = cr ? .55 : 1; U.upper.position.y = cr ? .55 : .95; U.legL.position.y = U.legR.position.y = cr ? .5 : .9;
     U.upper.rotation.x = 0; U.arms.rotation.x = s1.s === 2 ? H * .98 + pitch : pitch;
@@ -400,7 +419,7 @@ function drawMap(ctx, size, big) { const k = size / (MAP.half * 2), X = v => (v 
   const P = alive ? fp.P : null; const px = P ? P.pos.x : (remotes.get(specId) || {}).x, pz = P ? P.pos.z : (remotes.get(specId) || {}).z, py = P ? P.yaw : (remotes.get(specId) || {}).yaw;
   if (px !== undefined) { ctx.save(); ctx.translate(X(px), X(pz)); ctx.rotate(-py); ctx.fillStyle = '#ffd36a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; const s = big ? 12 : 9; ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s * .7, s * .8); ctx.lineTo(0, s * .4); ctx.lineTo(-s * .7, s * .8); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore(); } }
 const miniCtx = $('mini').getContext('2d'), bigCtx = $('bigc').getContext('2d');
-function updZoneUi() { if (!zone) { $('ztxt').textContent = ''; return; } const [cx, cz, r, , , , st, tl, dps, ph] = zone; zoneWall.scale.set(Math.max(.1, r), 1, Math.max(.1, r)); zoneWall.position.x = cx; zoneWall.position.z = cz;
+function updZoneUi() { zoneWall.visible = !!zone; if (!zone) { $('ztxt').textContent = training ? '훈련장 · 자기장 없음' : ''; $('zonev').style.opacity = 0; return; } const [cx, cz, r, , , , st, tl, dps, ph] = zone; zoneWall.scale.set(Math.max(.1, r), 1, Math.max(.1, r)); zoneWall.position.x = cx; zoneWall.position.z = cz;
   const me = alive ? fp.P.pos : null; const out = me && Math.hypot(me.x - cx, me.z - cz) > r; $('zonev').style.opacity = out ? 1 : 0;
   const mm = String(Math.floor(tl / 60)).padStart(1, '0') + ':' + String(tl % 60).padStart(2, '0');
   $('ztxt').textContent = st === 'final' ? '최종 자기장' : st === 'wait' ? `${ph + 1}단계 · ${mm} 뒤 자기장이 줄어요` : `자기장 줄어드는 중 · ${mm}`; $('ztxt').className = 'ztxt' + (out ? ' warn' : '');
@@ -410,13 +429,71 @@ function updZoneUi() { if (!zone) { $('ztxt').textContent = ''; return; } const 
 function updHp() { $('hpI').style.width = myHp + '%'; $('hpI').classList.toggle('low', myHp < 30); }
 function updHeal(dt) { if (!heal) return; heal.t += dt; $('healI').style.width = Math.min(100, heal.t / heal.dur * 100) + '%'; if (heal.t >= heal.dur) { net({ t: 'heal', k: heal.k }); meds[heal.k]--; heal = null; $('healbar').hidden = true; renderBag(); sendInv(); } }
 
+/* ---------- 방탄복 · 피해 숫자 ---------- */
+function updArmor() { const a = myArmor; $('armorUi').hidden = !a; if (!a) return; const A = ARMOR[a.k]; $('armorT').textContent = A.name; $('armorI').style.width = (a.dur / A.dur * 100) + '%'; }
+function setVest(A, lvl) { const U = A.userData; if (U.vestLvl === lvl) return; U.vestLvl = lvl; U.vest.visible = lvl > 0; if (lvl) U.vest.material = new THREE.MeshStandardMaterial({ color: ARMOR['v' + lvl].col, roughness: .8 }); }
+function dmgNum(pt, dmg, head, armor) { if (!pt) return; const v = pt.clone().project(cam); if (v.z > 1) return; const d = document.createElement('div'); d.className = 'dnum' + (head ? ' h' : armor ? ' a' : ''); d.textContent = Math.round(dmg); d.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; d.style.top = ((1 - v.y) / 2 * innerHeight) + 'px'; $('dnums').appendChild(d); setTimeout(() => d.remove(), 950); }
+
+/* ---------- 훈련장 (혼자, 서버 없이) ---------- */
+let tLootId = -1000, trainSpawn = null; const MATT = { steel: new THREE.MeshStandardMaterial({ color: 0xd9d2c0, roughness: .6, metalness: .4 }), post: new THREE.MeshStandardMaterial({ color: 0x3b3127, roughness: 1 }) };
+const trainG = new THREE.Group(); S.add(trainG);
+function steelTarget(x, z, r) { const piv = new THREE.Group(); piv.position.set(x, 1.8 + r, z); trainG.add(piv);
+  const plate = new THREE.Mesh(new THREE.CylinderGeometry(r, r, .04, 32), MATT.steel); plate.rotation.x = H; plate.position.y = -r - .15; plate.castShadow = true; piv.add(plate);
+  const dot = new THREE.Mesh(new THREE.CylinderGeometry(r * .33, r * .33, .045, 24), new THREE.MeshStandardMaterial({ color: 0xb02b1f })); dot.rotation.x = H; dot.position.y = -r - .15; dot.position.z = .003; piv.add(dot);
+  piv.add(new THREE.Mesh(new THREE.BoxGeometry(r * 2.6, .05, .05), MATT.post));
+  for (const sd of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.08, 1.8 + r, .08), MATT.post); p.position.set(x + sd * r * 1.3, (1.8 + r) / 2, z); trainG.add(p); }
+  plate.userData.target = piv; dot.userData.target = piv; hitables.push(plate, dot); piv.userData = { av: 0, ang: 0, hits: 0 }; trainTargets.push(piv); }
+function sign(txt, x, z, s = 1) { const c = document.createElement('canvas'); c.width = 256; c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#1a1712'; g.fillRect(0, 0, 256, 96); g.strokeStyle = '#e0902c'; g.lineWidth = 6; g.strokeRect(3, 3, 250, 90); g.fillStyle = '#f0e6d0'; g.font = 'bold 54px "IBM Plex Sans KR",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 128, 52);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const m = new THREE.Mesh(new THREE.PlaneGeometry(1.6 * s, .6 * s), new THREE.MeshStandardMaterial({ map: t, roughness: .9 })); m.position.set(x, .9 * s, z); trainG.add(m); }
+const TRAIN_ITEMS = () => { const a = [], b = []; W.filter(w => !w.rig && !w.thr).forEach(w => a.push(['gun', w.k, 1]));
+  ['7.62mm', '5.56mm', '5.45mm', '4.6mm', '9mm', '.45 ACP', '12게이지', '.300 매그넘'].forEach(c => b.push(['ammo', c, 120]));
+  ['reddot', 'holo', 'x2', 'x4', 'x8'].forEach(k => b.push(['optic', k, 1])); ['bandage', 'kit', 'med'].forEach(k => b.push(['med', k, 1])); ['v1', 'v2', 'v3'].forEach(k => b.push(['armor', k, ARMOR[k].dur]));
+  ['frag_west', 'flashbang_west', 'smoke_west', 'incendiary_east'].forEach(k => b.push(['throw', k, 2])); return [a, b]; };
+function placeTableItem(it, x, y, z) { const id = tLootId--; addLootObj([id, it[0], it[1], it[2], x, y, z]); lootObjs.get(id).userData.table = { it, x, y, z }; }
+function startTraining() {
+  ac(); training = true; phase = 'train'; const T = trainingMap(); buildMap(T); clearLoot(); resetInv(); zone = null;
+  for (const r of remotes.values()) removeAvatar(r); remotes.clear();
+  trainG.clear(); trainTargets.length = 0; hitables.length = 1;
+  T.targets.forEach(([d, r], i) => { const x = i % 2 ? 4 : -4; steelTarget(x, 28 - d, r); sign(d + 'm', x, 28 - d + 1.4, d > 100 ? 1.8 : 1); });
+  const [guns, rest] = TRAIN_ITEMS(); const MB = [];
+  guns.forEach((it, i) => { const x = -27 + i * 3.1; MB.push([x, .45, T.tables.z1, 1.6, .9, .9, 'crate']); placeTableItem(it, x, .92, T.tables.z1); });
+  rest.forEach((it, i) => { const x = -27 + i * 2.4; MB.push([x, .45, T.tables.z2, 1.3, .9, .9, 'crate']); placeTableItem(it, x, .92, T.tables.z2); });
+  buildMap(Object.assign(T, { boxes: T.boxes.concat(MB) })); // 테이블까지 넣어서 다시 만듦
+  dummies.forEach(d => S.remove(d.av)); dummies.length = 0;
+  T.dummies.forEach(([x, z, arm, moving, crouch], i) => { const id = 'd' + i; const av = makeAvatar(1000 + i, '허수아비 ' + (i + 1)); av.traverse(m => { if (m.userData.player) m.userData.player = id; }); av.position.set(x, 0, z); av.rotation.y = Math.atan2(x - 0, z - 32) ; setAvGun(av, ['akm', 'mp7', 'mk14', 'assault_rifle_q', 'glock', 'mossberg_590a1'][i]); setVest(av, arm ? ARMOR[arm].lvl : 0);
+    dummies.push({ id, av, x, z, hp: 100, arm: arm ? { k: arm, dur: ARMOR[arm].dur } : null, arm0: arm, alive: true, moving: !!moving, crouch: !!crouch, t: Math.random() * 6, deadT: 0 }); });
+  trainSpawn = T.spawn; alive = true; myHp = 100; updHp(); const P = fp.P; P.dead = false; P.pos.set(...T.spawn); P.vel.set(0, 0, 0); P.yaw = 0; P.pitch = 0; P.stance = 'stand';
+  $('lobby').hidden = true; $('brHud').hidden = false; fpEl.hidden = false; $('banner').hidden = true; $('spec').hidden = true; $('feed').innerHTML = ''; $('trainbar').hidden = false; $('aliveN').textContent = 1; $('pingT').textContent = '훈련장 (혼자)';
+  fp.setEnabled(true); $('start').hidden = false; fp.renderSlots(); fp.updHud(); renderBag(); resize(); }
+function leaveTraining(silent) { training = false; trainG.clear(); trainTargets.length = 0; hitables.length = 1; dummies.forEach(d => S.remove(d.av)); dummies.length = 0; clearLoot(); resetInv(); $('trainbar').hidden = true; if (!silent) toLobby(); }
+function respawnTrain() { myHp = 100; updHp(); alive = true; fp.P.dead = false; fp.P.pos.set(...trainSpawn); fp.P.vel.set(0, 0, 0); $('banner').hidden = true; fp.setEnabled(true); }
+// 훈련장에서는 서버 대신 여기서 처리
+function tnet(m) {
+  switch (m.t) {
+    case 'pick': { const g = lootObjs.get(m.id); if (!g) break; const u = g.userData; const item = [u.id, u.type, u.k, u.n, g.position.x, g.position.y, g.position.z];
+      if (u.type === 'armor') { if (myArmor) { const id = tLootId--; addLootObj([id, 'armor', myArmor.k, myArmor.dur, fp.P.pos.x + .7, 0, fp.P.pos.z]); } myArmor = { k: u.k, dur: u.n }; updArmor(); }
+      const tb = u.table; gotItem(item); if (tb) setTimeout(() => { if (training) placeTableItem(tb.it, tb.x, tb.y, tb.z); }, 2000); break; }
+    case 'drop': (m.items || []).forEach((it, i) => { const id = tLootId--; addLootObj([id, it.type, it.k, it.n, fp.P.pos.x + Math.cos(fp.P.yaw + Math.PI + i) * .9, 0, fp.P.pos.z - Math.sin(fp.P.yaw + Math.PI + i) * .9]); }); break;
+    case 'hit': { const d = dummies.find(x => x.id === m.id); if (!d || !d.alive) break; let dmg = m.dmg, arm = false; if (!m.head && d.arm) { const r = armorHit(d.arm, dmg); dmg = r.dmg; d.arm = r.armor; arm = true; if (!d.arm) setVest(d.av, 0); }
+      d.hp -= dmg; dmgNum(lastHitPt[m.id], dmg, m.head, arm); if (d.hp <= 0) { d.alive = false; d.deadT = 0; $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1000); kills++; $('killN').textContent = kills; } break; }
+    case 'self': { if (!alive) break; let dmg = m.dmg; if (m.kind !== 'incendiary_east' && myArmor) { const r = armorHit(myArmor, dmg); dmg = r.dmg; myArmor = r.armor; updArmor(); } myHp = Math.max(0, Math.round(myHp - dmg)); updHp(); snd.hurt();
+      if (myHp <= 0) { alive = false; fp.P.dead = true; showBanner('쓰러졌어요', '훈련장이라 2초 뒤 다시 일어나요', ''); setTimeout(() => { if (training) respawnTrain(); }, 2000); } break; }
+    case 'heal': { const M = MEDS[m.k]; myHp = Math.min(Math.max(myHp, Math.min(M.cap, myHp + M.heal)), 100); updHp(); break; }
+  } }
+function updDummies(dt) { for (const d of dummies) { const U = d.av.userData; d.t += dt;
+    if (!d.alive) { d.deadT += dt; U.body.rotation.x = Math.min(H, U.body.rotation.x + dt * 4); U.body.position.y = .15; U.tag.visible = false; if (d.deadT > 3) { d.alive = true; d.hp = 100; d.arm = d.arm0 ? { k: d.arm0, dur: ARMOR[d.arm0].dur } : null; setVest(d.av, d.arm0 ? ARMOR[d.arm0].lvl : 0); U.body.rotation.x = 0; U.body.position.y = 0; U.tag.visible = true; } continue; }
+    if (d.moving) { const x = d.x + Math.sin(d.t * .8) * 5; const v = Math.cos(d.t * .8); d.av.position.x = x; U.legL.rotation.x = Math.sin(d.t * 7) * .5 * Math.abs(v); U.legR.rotation.x = -U.legL.rotation.x; }
+    if (d.crouch) { U.legL.scale.y = U.legR.scale.y = .55; U.upper.position.y = .55; U.legL.position.y = U.legR.position.y = .5; }
+    d.av.rotation.y = Math.atan2(fp.P.pos.x - d.av.position.x, fp.P.pos.z - d.av.position.z) + Math.PI; U.arms.rotation.x = -.05; } }
+$('trainBtn').onclick = startTraining; $('leaveTrain').onclick = () => leaveTraining();
+
 /* ---------- 루프 ---------- */
 function resize() { const w = innerWidth, h = innerHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 const clock = new THREE.Clock(); let sendT = 0;
 function loop() { requestAnimationFrame(loop); const dt = Math.min(.05, clock.getDelta());
   if (phase !== 'lobby') {
-    fp.update(dt); updRemotes(dt); updHeal(dt);
+    fp.update(dt); updRemotes(dt); updHeal(dt); if (training) updDummies(dt);
     if (!alive) { const r = remotes.get(specId); if (r && r.av) { if (!r.alive) nextSpec(); const back = new THREE.Vector3(Math.sin(r.yaw) * 3.2, 0, Math.cos(r.yaw) * 3.2); cam.position.set(r.x + back.x + Math.cos(r.yaw) * .6, r.y + 2.1, r.z + back.z - Math.sin(r.yaw) * .6); cam.rotation.set(r.pitch * .7 - .12, r.yaw, 0, 'YXZ'); cam.fov = 72; cam.updateProjectionMatrix(); } else if (!r) { cam.position.set(0, 160, 160); cam.lookAt(0, 0, 0); if (remotes.size) nextSpec(); } }
     sun.position.set(cam.position.x - 40, 90, cam.position.z - 30); sun.target.position.set(cam.position.x, 0, cam.position.z);
     findLoot(); $('pick').hidden = !nearLoot; if (nearLoot) { const u = nearLoot.userData; $('pickT').textContent = itemName(u.type, u.k, u.n) + ' 줍기'; }
