@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
+import { ZONE_MUL, falloff } from './mapgen.js';
 
 export const H = Math.PI / 2, D2R = Math.PI / 180;
 /* yaw: 총구가 +X를 보게 돌리는 각, len: 실제 길이(m)
@@ -22,7 +23,7 @@ export const W = [
  {k:'mk14',grp:'저격·지정사수',cat:'MARKSMAN RIFLE',name:'MK14 EBR',ko:'MK14 지정사수 소총',yaw:-H,len:.89,cal:'7.62mm',dmg:61,rpm:300,mag:20,rec:.7,rng:.84,modes:['단발','자동'],vr:1.9,hr:.5,vel:853,zoom:1.3,rt:2.6,act:'auto',opt:RIFLE_OPT,def:'x4',by:'austincford',id:'lNGPW2NGPZ',lic:'CC-BY',d:'반자동 장거리 소총.'},
  {k:'sniper_west',grp:'저격·지정사수',cat:'MARKSMAN RIFLE',name:'SCAR-H DMR',ko:'SCAR 계열 지정사수 소총',yaw:-H,len:1.0,cal:'7.62mm',dmg:58,rpm:400,mag:20,rec:.6,rng:.8,modes:['단발'],vr:1.7,hr:.45,vel:850,zoom:1.3,rt:2.5,act:'semi',opt:RIFLE_OPT,def:'x4',by:'Pichuliru',id:'kwJawENuvA',lic:'CC0',d:'연사와 사거리의 균형이 좋은 지정사수 소총.'},
  {k:'awp',grp:'저격·지정사수',cat:'SNIPER RIFLE',name:'AWM',ko:'AWM 볼트액션 저격총',yaw:-H,len:1.2,cal:'.300 매그넘',dmg:105,rpm:40,mag:5,rec:.95,rng:1,modes:['볼트'],vr:3.5,hr:.6,vel:945,zoom:1.3,rt:3.0,act:'bolt',opt:['x8'],def:'x8',builtin:true,by:'Kyler Swanson',id:'fKsTWWhSkqt',lic:'CC-BY',d:'한 발에 끝내는 대신 노리쇠 조작이 느려요. 8배율 조준경이 붙어 있어요.'},
- {k:'kar98k',grp:'저격·지정사수',cat:'SNIPER RIFLE',name:'KAR98K',ko:'Kar98k 볼트액션 소총',yaw:0,len:1.11,cal:'7.62mm',dmg:79,rpm:45,mag:5,rec:.85,rng:.9,modes:['볼트'],vr:3,hr:.5,vel:760,zoom:1.4,rt:3.2,act:'bolt',opt:['none','reddot','x2','x4','x8'],strip:'^(clip|bullet\\d)$',clipLoad:1,by:'AdamKokrito',id:'ntijptIGIw',lic:'CC-BY',d:'오래된 군용 소총. 클립으로 5발을 한 번에 채워요.'},
+ {k:'kar98k',grp:'저격·지정사수',cat:'SNIPER RIFLE',name:'KAR98K',ko:'Kar98k 볼트액션 소총',yaw:0,len:1.11,cal:'7.62mm',dmg:75,rpm:45,mag:5,rec:.85,rng:.9,modes:['볼트'],vr:3,hr:.5,vel:760,zoom:1.4,rt:3.2,act:'bolt',opt:['none','reddot','x2','x4','x8'],strip:'^(clip|bullet\\d)$',clipLoad:1,by:'AdamKokrito',id:'ntijptIGIw',lic:'CC-BY',d:'오래된 군용 소총. 클립으로 5발을 한 번에 채워요.'},
  {k:'glock',grp:'권총',cat:'PISTOL',name:'GLOCK 17',ko:'글록 17',yaw:0,len:.2,cal:'9mm',dmg:30,rpm:400,mag:17,rec:.22,rng:.3,modes:['단발'],vr:1.1,hr:.5,vel:375,zoom:1.15,rt:1.6,act:'semi',pistol:1,opt:['none','reddot'],by:'J-Toastie',id:'q3lsX3tSta',lic:'CC-BY',d:'가볍고 장탄수가 많은 기본 권총.'},
  {k:'glock19_rigged',grp:'권총',cat:'PISTOL',name:'GLOCK 19',ko:'글록 19',yaw:H,len:.19,cal:'9mm',dmg:30,rpm:420,mag:15,rec:.24,rng:.28,modes:['단발'],vr:1.1,hr:.5,vel:375,zoom:1.15,rt:1.6,act:'semi',pistol:1,opt:['none','reddot'],by:'PuKkBuMXDD',id:'gDhOo5jkNX',lic:'CC-BY',d:'쏠 때 슬라이드가 실제로 뒤로 젖혀져요.'},
  {k:'sig_p228_rigged',grp:'권총',cat:'PISTOL',name:'SIG P228',ko:'SIG P228',yaw:-H,len:.18,cal:'9mm',dmg:31,rpm:380,mag:13,rec:.24,rng:.28,modes:['단발'],vr:1.15,hr:.5,vel:360,zoom:1.15,rt:1.6,act:'semi',pistol:1,opt:['none','reddot'],by:'PuKkBuMXDD',id:'xce5OmcO43',lic:'CC-BY',d:'쏠 때 슬라이드가 실제로 뒤로 젖혀져요.'},
@@ -47,6 +48,31 @@ export const OPTICS = {
   x8: { name: '8배율', zoom: 8, type: 'scope', ret: 'mil', len: .28, h: .055, r: .02 },
 };
 
+/* ---------- 키 설정 ----------
+   동작마다 키 하나. 마우스 버튼은 Mouse0(좌) Mouse1(휠) Mouse2(우) Mouse3·Mouse4(측면). localStorage에 저장 */
+export const ACTIONS = [['fwd', '앞으로', 'KeyW'], ['back', '뒤로', 'KeyS'], ['left', '왼쪽', 'KeyA'], ['right', '오른쪽', 'KeyD'], ['sprint', '달리기 · 숨 참기', 'ShiftLeft'], ['jump', '점프', 'Space'],
+  ['crouch', '앉기 (달리면서 누르면 슬라이딩)', 'KeyC'], ['prone', '엎드리기', 'KeyZ'], ['leanL', '왼쪽 기울이기', 'KeyQ'], ['leanR', '오른쪽 기울이기', 'KeyE'], ['fire', '사격', 'Mouse0'], ['ads', '조준', 'Mouse2'],
+  ['reload', '재장전', 'KeyR'], ['mode', '사격 방식', 'KeyB'], ['s1', '주무기 1', 'Digit1'], ['s2', '주무기 2', 'Digit2'], ['s3', '권총', 'Digit3'], ['s4', '투척', 'Digit4'], ['knife', '단검', 'KeyV'],
+  ['holster', '무기 집어넣기 (주먹)', 'KeyX'], ['inv', '인벤토리', 'KeyH'], ['pick', '줍기', 'KeyF'], ['drop', '버리기', 'KeyG'], ['map', '큰 지도', 'KeyM'], ['heal1', '붕대', 'Digit7'], ['heal2', '구급상자', 'Digit8'], ['heal3', '의료용 키트', 'Digit9']];
+const DEF_BIND = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]]));
+export const BIND = Object.assign({}, DEF_BIND); try { Object.assign(BIND, JSON.parse(localStorage.getItem('fps_keys') || '{}')); } catch (e) {}
+export function saveBinds() { try { localStorage.setItem('fps_keys', JSON.stringify(BIND)); } catch (e) {} }
+export function actsOf(code) { const r = []; for (const k in BIND) if (BIND[k] === code) r.push(k); return r; }
+export function codeName(c) { if (!c) return '없음'; const M = { Mouse0: '좌클릭', Mouse1: '휠 클릭', Mouse2: '우클릭', Mouse3: '마우스 측면 (뒤)', Mouse4: '마우스 측면 (앞)', Space: 'Space', ShiftLeft: '왼쪽 Shift', ShiftRight: '오른쪽 Shift', ControlLeft: '왼쪽 Ctrl', ControlRight: '오른쪽 Ctrl', AltLeft: '왼쪽 Alt', Tab: 'Tab', CapsLock: 'CapsLock', Backquote: '`', Enter: 'Enter', Backspace: 'Backspace' };
+  return M[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, '숫자패드 ').replace(/^Arrow/, '방향키 '); }
+// 키 설정 화면: container 안에 표를 그림. 버튼을 누르고 원하는 키나 마우스 버튼을 누르면 바뀜 (Esc는 취소)
+export function keyPanel(container) { let wait = null;
+  const draw = () => { container.innerHTML = '<div class="kp">' + ACTIONS.map(([a, n]) => `<div class="kr"><span>${n}</span><button class="kb${wait === a ? ' w' : ''}" data-a="${a}">${wait === a ? '키를 누르세요…' : codeName(BIND[a])}</button></div>`).join('') + '</div><div class="kf"><button class="kb" data-reset="1">기본값으로</button><span>같은 키를 두 동작에 넣으면 앞의 것이 비워져요. 마우스 측면 버튼도 돼요.</span></div>';
+    container.querySelectorAll('button[data-a]').forEach(b => b.onclick = ev => { ev.stopPropagation(); wait = b.dataset.a; draw(); }); container.querySelector('[data-reset]').onclick = () => { Object.assign(BIND, DEF_BIND); saveBinds(); wait = null; draw(); }; };
+  const set = code => { if (!wait) return false; if (code !== 'Escape') { for (const k in BIND) if (BIND[k] === code && k !== wait) BIND[k] = ''; BIND[wait] = code; saveBinds(); } wait = null; draw(); return true; };
+  addEventListener('keydown', e => { if (wait && container.isConnected && container.offsetParent !== null) { e.preventDefault(); e.stopImmediatePropagation(); set(e.code); } }, true);
+  addEventListener('mousedown', e => { if (wait && container.isConnected && container.offsetParent !== null && !(e.target.dataset && e.target.dataset.a)) { e.preventDefault(); e.stopImmediatePropagation(); set('Mouse' + e.button); } }, true);
+  addEventListener('mouseup', e => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+  draw(); return { draw }; }
+export const KEY_CSS = `.kp{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 16px}.kr{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;border-bottom:1px solid #ffffff14;padding:3px 0}
+.kb{appearance:none;border:1px solid #ffffff33;background:#00000055;color:#eee;font:600 12px var(--mono,monospace);padding:4px 8px;min-width:96px;cursor:pointer}.kb:hover{border-color:var(--accent,#e0902c)}.kb.w{background:var(--accent,#e0902c);color:#1a1205}
+.kf{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:12px;color:#aaa;flex-wrap:wrap}`;
+
 /* ---------- 파츠 (배그식 부착물) ----------
    총 종류마다 달 수 있는 전용 파츠가 다름. fx: vr 수직반동 배수, hr 수평반동 배수, rec 반동 회복 배수, ads 조준 속도 배수, sway 흔들림 배수, mag 탄창 추가, rt 장전시간 배수, spread 산탄 퍼짐 배수 */
 export const ATT = {
@@ -62,8 +88,7 @@ export const ATT = {
   mag_e_p: { slot: 'mag', name: '대용량 탄창 (권총)', fx: { mag: 8 } },
   stock_t: { slot: 'stock', name: '전술 개머리판', fx: { vr: .92, sway: .8 } }, cheek: { slot: 'stock', name: '칙패드', fx: { vr: .85, sway: .7 } }, loops: { slot: 'stock', name: '탄띠', fx: { rt: .75 } },
 };
-// 머리·몸통·팔다리 배율 (배그와 비슷하게)
-export const ZONE_MUL = { AR: [2.35, 1, .9], SMG: [2.1, 1, 1.05], DMR: [2.35, 1.05, .95], SR: [2.5, 1.3, .95], SG: [1.5, .9, 1.05], P: [2.1, 1, 1.05] };
+export { ZONE_MUL, falloff };
 export const ATT_SLOTS = ['muzzle', 'grip', 'mag', 'stock'];
 export const SLOT_NAME = { optic: '조준경', muzzle: '총구', grip: '손잡이', mag: '탄창', stock: '개머리판' };
 export function wclass(w) { return w.thr || w.rig ? null : w.pistol ? 'P' : w.pel ? 'SG' : w.grp === '기관단총' ? 'SMG' : w.act === 'bolt' ? 'SR' : w.grp === '저격·지정사수' ? 'DMR' : 'AR'; }
@@ -277,7 +302,7 @@ export function createFP(o) {
   async function equip(s) {
     if (!slots[s]) return; curSlot = s; const w = WK[slots[s]];
     const m = await getModel(w); if (slots[curSlot] !== w.k || curSlot !== s) return;
-    vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.userData.muzzle.add(flash); m.userData.muzzle.add(flashLight); cur = m;
+    vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.userData.muzzle.add(flash); cur = m;
     if (optSel[w.k] !== undefined) attachOptic(m, w, optSel[w.k]); applyAtts(m, w);
     playIdle(m); ws = { w, draw: 0, reload: null, cycle: null }; ads = false; burstLeft = 0; updHud(); renderSlots(); o.onEquip && o.onEquip(w);
   }
@@ -309,14 +334,29 @@ export function createFP(o) {
     const h = ray.intersectObjects((o.playerHitboxes ? o.playerHitboxes() : []).concat(hitables), false)[0]; const st = o.rayStatic ? o.rayStatic(og, f, 1.8) : null;
     if (h && h.object.userData.player && (!st || h.distance < st.distance)) { const head = !!h.object.userData.head; blood(h.point, f, head); snd.hit(); snd.noise(.1, 500, .4, 3); showHit(''); o.onHitPlayer && o.onHitPlayer(h.object.userData.player, head ? 15 : 11, head, 'fist', h.point, f); shake += .15; }
     else if (st || (h && !h.object.userData.player)) { const hp = st || h; puff(hp.point, 0xb8a68a, .3, .4); snd.noise(.08, 400, .35, 4); shake += .2; if (h && h.object.userData.target) { h.object.userData.target.userData.av += 1.5; snd.ding(); } } }
+  // 단검: 휘두르고 0.12초 뒤 2.2m 앞까지 판정. 몸통 42, 머리 65, 팔다리 34
+  const knifeM = (() => { const g = new THREE.Group(); const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, metalness: .9, roughness: .25 }), dk = new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: .8 });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(.006, .03, .16), steel); blade.position.z = -.1; g.add(blade); const tip = new THREE.Mesh(new THREE.ConeGeometry(.016, .045, 4).rotateX(-H), steel); tip.scale.set(.38, 1, 1); tip.position.z = -.2; g.add(tip);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(.012, .06, .012), dk); guard.position.z = -.015; g.add(guard); const hd = new THREE.Mesh(new THREE.CylinderGeometry(.013, .015, .1, 10).rotateX(H), dk); hd.position.z = .04; g.add(hd);
+    g.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.renderOrder = 1; } }); g.visible = false; vmRoot.add(g); return g; })();
+  function slash() { if (slashT < .55) return; slashT = 0; slashDone = false; punchSide = -punchSide; snd.noise(.18, 5000, .14, 2.5); }
+  function slashHit() { cam2.updateMatrixWorld(); const og = cam2.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion); ray.set(og, f); ray.far = 2.2;
+    const h = ray.intersectObjects((o.playerHitboxes ? o.playerHitboxes() : []).concat(hitables), false)[0]; const st = o.rayStatic ? o.rayStatic(og, f, 2.2) : null;
+    if (h && h.object.userData.player && (!st || h.distance < st.distance)) { const head = !!h.object.userData.head, limb = !!h.object.userData.limb; blood(h.point, f, head); snd.hit(); snd.noise(.12, 700, .45, 3); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(h.object.userData.player, head ? 65 : limb ? 34 : 42, head, 'knife', h.point, f); }
+    else if (st || (h && !h.object.userData.player)) { const hp = st || h; puff(hp.point, 0xb8a68a, .25, .35); snd.tone(2600, .05, .05, 'square'); if (h && h.object.userData.target) { h.object.userData.target.userData.av += 1; snd.ding(); } } }
   function updArms(dt) {
     const w = ws && ws.w; const healK = o.healing && o.healing(); const showArms = enabled && !P.dead && !(w && w.rig) && !(cur && !cur.visible && !(ws && ws.reload && ws.reload.kind === 'throw'));
-    AR.g.visible = AL.g.visible = showArms; medProp.visible = false; if (!showArms) return;
+    AR.g.visible = AL.g.visible = showArms; medProp.visible = false; knifeM.visible = false; if (!showArms) return;
     cam2.updateMatrixWorld(true); vmRoot.updateMatrixWorld(true);
     const tnow = performance.now() / 1000, bob = Math.sin(P.bob) * .01, br = Math.sin(tnow * 1.6) * .004;
     if (healK && healK.k) { const u = Math.min(1, healK.t / healK.dur), wig = Math.sin(tnow * 9) * .02; medProp.visible = true; ['kit', 'med', 'bandage'].forEach(k => medProp.userData[k].visible = k === healK.k);
       medProp.position.set(0, -.2 + br, -.36); medProp.rotation.set(.5, Math.sin(tnow * 2) * .2, 0);
       poseArm(AR, new THREE.Vector3(.07 + wig, -.21, -.34), SH_R, false); poseArm(AL, new THREE.Vector3(-.07, -.22 - wig, -.35), SH_L, false); return; }
+    if (!cur && knifeOut) { slashT += dt; if (!slashDone && slashT > .12) { slashDone = true; slashHit(); }
+      const u = Math.min(1, slashT / .32), e2 = slashT < .32 ? Math.sin(u * Math.PI) : 0, sd = punchSide; const run = P.sprinting ? 1 : 0;
+      const r = new THREE.Vector3(.17 + (-.24 * u) * e2 * (sd > 0 ? 1 : -1) * 0 + (sd > 0 ? .1 - .3 * u : -.2 + .3 * u) * e2, -.24 + bob + br - run * .05 + .1 * e2 * (1 - u), -.44 - .2 * e2);
+      poseArm(AR, r, SH_R, true); poseArm(AL, new THREE.Vector3(-.19, -.27 - bob + br - run * .05, -.46), SH_L, true);
+      knifeM.visible = true; knifeM.position.copy(r).add(new THREE.Vector3(0, .02, -.03)); knifeM.rotation.set(.35 - .5 * e2, .15 + (sd > 0 ? .9 : -.9) * e2 * (u - .5), (sd > 0 ? -.7 : .7) * e2); return; }
     if (!cur) { punchT += dt; if (!punchDone && punchT > .09) { punchDone = true; punchHit(); }
       const pe = punchT < .32 ? Math.sin(Math.min(1, punchT / .32) * Math.PI) : 0; const run = P.sprinting ? 1 : 0; const sw = Math.sin(P.bob) * .03 * (run ? 2 : 1);
       const r = new THREE.Vector3(.19, -.25 + bob + br - run * .05 + sw, -.5), l = new THREE.Vector3(-.19, -.26 - bob + br - run * .05 - sw, -.48);
@@ -341,7 +381,7 @@ export function createFP(o) {
 
 
   /* ----- 입력 ----- */
-  let invOpen = false;
+  let invOpen = false, scopeBob = 0, recQ = 0, knifeOut = false, slashT = 9, slashDone = true;
   const ctrl = () => enabled && !P.dead && !invOpen && (!o.canControl || o.canControl());
   // 클릭 순간에 바로 잠가야 브라우저가 허락함 (비동기로 다시 시도하면 막힘)
   function lockNow() { try { const r = o.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
@@ -352,31 +392,49 @@ export function createFP(o) {
     if (P.dead) { o.onDeadLook && o.onDeadLook(dx, dy); return; }
     const z = adsT > .5 ? adsZoom() : 1; const sens = (o.sens ? o.sens() : 1) * .0021 / Math.pow(z, .85); P.yaw -= dx * sens; P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - dy * sens)); mdx += dx; mdy += dy; });
   o.canvas.addEventListener('contextmenu', e => e.preventDefault());
-  document.addEventListener('mousedown', e => { if (!enabled || (el.start && !el.start.hidden)) return; if (e.target !== o.canvas && !locked) return; ac(); if (!ctrl()) return;
-    if (!locked && e.target === o.canvas) lockNow();
-    if (!locked && e.button === 0) dragLook = { x: e.clientX, y: e.clientY };
-    if (e.button === 0) { fireHeld = true; tryFire(true); }
-    if (e.button === 2) ads = true; });
-  document.addEventListener('mouseup', e => { if (!enabled) return; if (e.button === 0) { fireHeld = false; dragLook = null; } if (e.button === 2) ads = false; });
-  addEventListener('keydown', e => { if (!enabled) return; if (o.onKey && o.onKey(e)) return; if (e.target && e.target.tagName === 'INPUT') return;
-    if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'Tab'].includes(e.code)) e.preventDefault();
-    if (keys[e.code]) return; keys[e.code] = true;
-    if ((e.code === 'KeyH' || (e.code === 'Escape' && invOpen)) && enabled && !P.dead && (!o.canControl || o.canControl())) { toggleInv(); return; }
+  const held = a => !!keys[BIND[a]];
+  // 키·마우스 버튼 공통 처리: code를 눌렀을 때 그 키에 묶인 동작들을 실행
+  function press(code, e) { if (keys[code]) return; keys[code] = true; const acts = actsOf(code);
+    if (acts.includes('inv') && enabled && !P.dead && (!o.canControl || o.canControl())) { toggleInv(); return; }
     if (!ctrl()) return;
-    if (e.code === 'KeyR') startReload();
-    if (e.code === 'KeyB' && ws) { const v = invOf(ws.w); if (ws.w.modes.length < 2) setState(ws.w.name + '은(는) ' + ws.w.modes[0] + '만 돼요'); else { v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); setState(ws.w.modes[v.mode]); } updHud(); }
-    if (e.code === 'KeyC') P.stance = P.stance === 'crouch' ? 'stand' : 'crouch';
-    if (e.code === 'KeyZ') P.stance = P.stance === 'prone' ? 'stand' : 'prone';
-    if (e.code === 'Space') { if (P.stance !== 'stand') P.stance = 'stand'; else if (P.onG) { P.vel.y = 4.3; P.onG = false; } }
-    const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (n >= 0 && n !== curSlot && slots[n]) equip(n);
-    if (e.code === 'KeyX' && ws) { holster(); } });
-  addEventListener('keyup', e => { keys[e.code] = false; });
+    for (const a of acts) act(a, true, e); }
+  function release(code) { keys[code] = false; for (const a of actsOf(code)) act(a, false); }
+  function act(a, down, e) {
+    if (!down) { if (a === 'fire') fireHeld = false; if (a === 'ads') ads = false; o.onAction && o.onAction(a, false); return; }
+    switch (a) {
+      case 'fire': fireHeld = true; tryFire(true); break;
+      case 'ads': ads = true; break;
+      case 'reload': startReload(); break;
+      case 'mode': if (ws) { const v = invOf(ws.w); if (ws.w.modes.length < 2) setState(ws.w.name + '은(는) ' + ws.w.modes[0] + '만 돼요'); else { v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); setState(ws.w.modes[v.mode]); } updHud(); } break;
+      case 'crouch': if (P.sprinting && P.onG && slideCd <= 0) startSlide(); else P.stance = P.stance === 'crouch' ? 'stand' : 'crouch'; break;
+      case 'prone': slideT = 0; P.stance = P.stance === 'prone' ? 'stand' : 'prone'; break;
+      case 'jump': if (slideT > 0) { slideT = 0; P.stance = 'stand'; if (P.onG) { P.vel.y = 4.3; P.onG = false; } } else if (P.stance !== 'stand') P.stance = 'stand'; else if (P.onG) { P.vel.y = 4.3; P.onG = false; } break;
+      case 's1': case 's2': case 's3': case 's4': { const n = +a[1] - 1; if (n === 3 && curSlot === 3 && o.onCycleThrow) { o.onCycleThrow(); break; } if (n !== curSlot && slots[n]) { knifeOut = false; equip(n); } break; }
+      case 'knife': if (knifeOut) { knifeOut = false; snd.click(); } else { holster(); knifeOut = true; snd.noise(.15, 4000, .08, 3); } renderSlots(); updHud(); break;
+      case 'holster': if (ws || knifeOut) { knifeOut = false; holster(); } break;
+      default: o.onAction && o.onAction(a, true, e); }
+  }
+  document.addEventListener('mousedown', e => { if (!enabled || (el.start && !el.start.hidden)) return; if (e.target !== o.canvas && !locked) return; ac();
+    if (e.button === 3 || e.button === 4) e.preventDefault();
+    if (!locked && e.target === o.canvas) lockNow();
+    if (!locked && e.button === 0 && ctrl()) dragLook = { x: e.clientX, y: e.clientY };
+    press('Mouse' + e.button, e); });
+  document.addEventListener('mouseup', e => { if (e.button === 3 || e.button === 4) e.preventDefault(); if (!enabled) return; if (e.button === 0) dragLook = null; release('Mouse' + e.button); });
+  addEventListener('auxclick', e => { if (enabled && (e.button === 3 || e.button === 4)) e.preventDefault(); });
+  addEventListener('keydown', e => { if (!enabled) return; if (o.onKey && o.onKey(e)) return; if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Escape' && invOpen) { toggleInv(false); return; }
+    if (actsOf(e.code).length || e.code === 'Tab') e.preventDefault();
+    if (keys[e.code]) return; press(e.code, e); });
+  addEventListener('keyup', e => release(e.code));
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; fireHeld = false; });
   function holster() { vm.clear(); cur = null; ws = null; curSlot = -1; renderSlots(); updHud(); }
+  /* ----- 슬라이딩 ----- */
+  let slideT = 0, slideCd = 0; const slideDir = new THREE.Vector3();
+  function startSlide() { slideT = .8; slideCd = 1.1; slideDir.set(P.vel.x, 0, P.vel.z).normalize(); P.stance = 'crouch'; snd.noise(.6, 900, .25, 1.5); shake += .1; }
 
   /* ----- 사격 ----- */
   function canFire() { if (!ws || !cur) return false; if (ws.draw < 1 || ws.cycle) return false; if (P.sprinting || (o.healing && o.healing())) return false; if (ws.reload) { if (ws.reload.kind === 'shell' && invOf(ws.w).ammo > 0) ws.reload.cancel = true; return false; } return true; }
-  function tryFire(press) { const w = ws && ws.w; if (!ctrl()) return; if (!w) { if (!cur) punch(); return; } if (!canFire()) return; const v = invOf(w); const t = performance.now() / 1000; const iv = 60 / Math.max(30, w.rpm); if (t - lastShot < iv) return;
+  function tryFire(press) { const w = ws && ws.w; if (!ctrl()) return; if (!w) { if (!cur) { if (knifeOut) slash(); else punch(); } return; } if (!canFire()) return; const v = invOf(w); const t = performance.now() / 1000; const iv = 60 / Math.max(30, w.rpm); if (t - lastShot < iv) return;
     const mode = w.modes[v.mode]; if (!press && !(mode === '자동' || (mode === '점사' && burstLeft > 0))) return;
     if (w.thr) { throwIt(); return; }
     if (v.ammo <= 0) { if (press) { snd.click(); if (reserveOf(w) > 0) startReload(); else setState('탄약 없음'); } return; }
@@ -387,12 +445,12 @@ export function createFP(o) {
   function fireOne(w) {
     const moving = Math.hypot(P.vel.x, P.vel.z) > .5, stM = P.stance === 'crouch' ? .8 : P.stance === 'prone' ? .55 : 1, airM = P.onG ? 1 : 2.2;
     const F = attFx(w); const grow = 1 + Math.min(14, shotIdx) * .04; const vk = F.vr * w.vr * D2R * (adsT > .5 ? .85 : 1) * stM * (moving ? 1.25 : 1) * airM * grow * (.85 + Math.random() * .3);
-    P.pitch += vk; recAcc += vk * .55; P.yaw += (Math.random() * 2 - 1) * F.hr * w.hr * D2R * stM * (.6 + Math.min(1, shotIdx / 6) * .6);
-    const adsK = 1 - .8 * ease(adsT); kick += (.025 + w.rec * .05) * (1 - .5 * adsT); kickR += (.04 + w.rec * .08) * adsK; shake = Math.min(1, shake + (.25 + w.rec * .4) * adsK * .6); flashT = F.noFlash ? 0 : .045; snd.shot(w, F.quiet ? .3 : 1, F.quiet ? .7 : 0);
+    recQ += vk; recAcc += vk * .55; P.yaw += (Math.random() * 2 - 1) * F.hr * w.hr * D2R * stM * (.6 + Math.min(1, shotIdx / 6) * .6);
+    const scopedFire = scopedOptic() && adsT > .5, adsK = scopedFire ? 0 : 1 - .8 * ease(adsT); kick += (.025 + w.rec * .05) * (1 - .5 * adsT); kickR += (.04 + w.rec * .08) * adsK; shake = Math.min(1, shake + (.25 + w.rec * .4) * adsK * .6); flashT = F.noFlash ? 0 : .045; snd.shot(w, F.quiet ? .3 : 1, F.quiet ? .7 : 0);
     if (w.rig) playOnce(cur, 'shoot'); else blow = .001;
     const hip = (w.pistol ? .03 : w.pel ? 0 : w.act === 'bolt' ? .07 : w.grp === '기관단총' ? .028 : .038);
     const scopedNow = adsT > .6;
-    let spread = (scopedNow ? (scopedOptic() ? .0006 : .003) : hip) * (moving ? (scopedNow ? 1.6 : 2) : 1) * airM * stM + bloom; bloom = Math.min(.03, bloom + .004 * (w.rec + .3));
+    let spread = (scopedNow ? (scopedOptic() ? .0006 : .003) : hip) * (moving ? (scopedNow ? 1.6 : 2) : 1) * airM * stM * (slideT > 0 ? 1.7 : 1) + bloom; bloom = Math.min(.03, bloom + .004 * (w.rec + .3));
     if (scopedOptic() && scopedNow && P.holding) spread *= .5;
     const n = w.pel || 1; cam2.updateMatrixWorld();
     const og = new THREE.Vector3(); cam2.getWorldPosition(og); const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion);
@@ -427,7 +485,7 @@ export function createFP(o) {
       for (let i = 0; i < (tg ? 6 : 4); i++) { const s = new THREE.Mesh(chipGeo, tg ? chipMatT : chipMat); s.position.copy(hit.point); s.userData = { v: nrm.clone().multiplyScalar(1.5 + Math.random() * 2).add(new THREE.Vector3((Math.random() - .5) * 2, Math.random() * 2, (Math.random() - .5) * 2)), t: 0 }; S2.add(s); sparks.push(s); }
       if (b.mine && !tg) snd.tone(300 + Math.random() * 200, .04, .02, 'triangle'); }
     if (tg && b.mine) { tg.userData.av += 3 + Math.random() * 2; tg.userData.hits++; snd.ding(); showHit(Math.round(hit.point.distanceTo(b.start)) + 'm'); }
-    if (pl && b.mine) { const head = !!hit.object.userData.head, limb = !!hit.object.userData.limb; const dist = hit.point.distanceTo(b.start); const fall = dist > 100 ? Math.max(.5, 1 - (dist - 100) / 400) : 1; const M = ZONE_MUL[wclass(b.w)] || ZONE_MUL.AR;
+    if (pl && b.mine) { const head = !!hit.object.userData.head, limb = !!hit.object.userData.limb; const dist = hit.point.distanceTo(b.start); const cls = wclass(b.w) || 'AR', fall = falloff(cls, dist); const M = ZONE_MUL[cls] || ZONE_MUL.AR;
       snd.hit(); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(pl, Math.round(b.w.dmg * fall * (head ? M[0] : limb ? M[2] : M[1])), head, b.w.k, hit.point, bdir); } }
   function showHit(t) { hitmT = .25; el.dist.textContent = t; }
   function throwIt() { if (!cur || ws.reload) return; const v = invOf(ws.w); if (v.reserve <= 0) { setState('투척물 없음'); return; }
@@ -505,7 +563,7 @@ export function createFP(o) {
   function shellObj(U) { if (U.shell) return U.shell; const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.CylinderGeometry(.0095, .0095, .055, 12).rotateZ(H), shellMat); b.position.x = .006; g.add(b); const base = new THREE.Mesh(new THREE.CylinderGeometry(.0105, .0105, .014, 12).rotateZ(H), casingMat); base.position.x = -.026; g.add(base); g.visible = false; cur.add(g); U.shell = g; return g; }
   function cyclePose(dt) { const c = ws.cycle; c.t += dt; const u = c.t / c.dur; const out = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 };
     if (c.kind === 'pump') { const a = u < .25 ? 0 : u < .6 ? ease((u - .25) / .35) : 1 - ease((u - .6) / .4); if (!setPart('pump', 'back', .09 * a)) out.z += .04 * a; out.rx = -.05 * a; if (u > .5 && !c.e) { c.e = 1; snd.bolt(); eject(shellMat); } }
-    else { const tl = Math.sin(Math.min(1, u) * Math.PI) * (1 - .75 * adsT); out.rz = .35 * tl; out.y = -.02 * tl; const a = u < .3 ? 0 : u < .6 ? ease((u - .3) / .3) : 1 - ease((u - .6) / .3); if (!setPart('bolt', 'back', .09 * a)) out.z += .03 * a; if (u > .55 && !c.e) { c.e = 1; snd.bolt(); eject(casingMat); } if (ads && scopedOptic()) adsT = Math.min(adsT, .5); }
+    else { const tl = Math.sin(Math.min(1, u) * Math.PI) * (1 - .75 * adsT); out.rz = .35 * tl; out.y = -.02 * tl; const a = u < .3 ? 0 : u < .6 ? ease((u - .3) / .3) : 1 - ease((u - .6) / .3); if (!setPart('bolt', 'back', .09 * a)) out.z += .03 * a; if (u > .55 && !c.e) { c.e = 1; snd.bolt(); eject(casingMat); } scopeBob = scopedOptic() ? Math.sin(Math.min(1, u) * Math.PI) : 0; }
     if (c.t >= c.dur) { ws.cycle = null; resetParts(cur); }
     return out; }
 
@@ -528,7 +586,7 @@ export function createFP(o) {
 
   /* ----- HUD ----- */
   function setState(s) { if (!el.state) return; el.state.textContent = s; stateT = s ? 2.5 : 0; }
-  function updHud() { if (!el.ammoN) return; if (!ws) { el.ammoN.textContent = '-'; el.ammoR.textContent = ''; el.mode.textContent = '맨손'; return; } const w = ws.w, v = invOf(w); el.ammoN.textContent = w.thr ? v.reserve : v.ammo; el.ammoR.textContent = w.thr ? '' : reserveOf(w); el.mode.textContent = w.modes[v.mode] + (cur && cur.userData.opticKey !== 'none' ? ' · ' + OPTICS[cur.userData.opticKey].name : ''); }
+  function updHud() { if (!el.ammoN) return; if (!ws) { el.ammoN.textContent = '-'; el.ammoR.textContent = ''; el.mode.textContent = knifeOut ? '단검' : '맨손'; return; } const w = ws.w, v = invOf(w); el.ammoN.textContent = w.thr ? v.reserve : v.ammo; el.ammoR.textContent = w.thr ? '' : reserveOf(w); el.mode.textContent = w.modes[v.mode] + (cur && cur.userData.opticKey !== 'none' ? ' · ' + OPTICS[cur.userData.opticKey].name : ''); }
   function renderSlots() { if (!el.slots) return; el.slots.innerHTML = slots.map((k, i) => `<div class="${i === curSlot ? 'on' : ''}"><b>${i + 1}</b>${k ? WK[k].name + (WK[k].thr ? ' ×' + invOf(WK[k]).reserve : '') : '<span style="opacity:.5">비어 있음</span>'}</div>`).join(''); }
   if (el.strip) { const ppd = 3; let h = ''; for (let rep = -1; rep <= 1; rep++) for (let d = 0; d < 360; d += 5) { const x = (d + rep * 360) * ppd + 1200; const lab = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' }[d];
     if (d % 15 === 0) h += `<span class="${lab && lab.length === 1 ? 'big' : ''}" style="left:${x}px">${lab || d}</span>`; h += `<i style="left:${x}px;height:${d % 15 ? 4 : 8}px"></i>`; } el.strip.innerHTML = h; el.strip.style.width = '4000px'; }
@@ -538,23 +596,27 @@ export function createFP(o) {
   function collide() { for (const b of solids) { const r = .32, top = P.pos.y + P.eye * .95; if (P.pos.y > b.max.y - .05 || top < b.min.y) continue;
     const cx = Math.max(b.min.x, Math.min(P.pos.x, b.max.x)), cz = Math.max(b.min.z, Math.min(P.pos.z, b.max.z)); const dx = P.pos.x - cx, dz = P.pos.z - cz, d = Math.hypot(dx, dz);
     if (d < r) { if (d > 1e-4) { P.pos.x = cx + dx / d * r; P.pos.z = cz + dz / d * r; } else P.pos.x = b.max.x + r; } } }
-  function groundY() { let g = 0; for (const b of solids) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .35) g = Math.max(g, b.max.y); } return g; }
+  function groundY() { let g = o.groundAt ? o.groundAt(P.pos.x, P.pos.z) : 0; for (const b of solids) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .35) g = Math.max(g, b.max.y); } return g; }
 
   /* ----- 매 프레임 ----- */
   function update(dt) {
     tickMixers(dt);
     const w = ws && ws.w; const tnow = performance.now() / 1000; const can = ctrl();
-    const fwd = can ? (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) : 0, str = can ? (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) : 0;
-    P.sprinting = can && !!keys.ShiftLeft && fwd > 0 && adsT < .3 && P.stance !== 'prone' && !(ws && ws.reload && ws.reload.kind !== 'shell') && !(o.healing && o.healing());
+    const fwd = can ? (held('fwd') ? 1 : 0) - (held('back') ? 1 : 0) : 0, str = can ? (held('right') ? 1 : 0) - (held('left') ? 1 : 0) : 0;
+    slideCd -= dt; if (slideT > 0) slideT -= dt;
+    P.sprinting = can && slideT <= 0 && held('sprint') && fwd > 0 && adsT < .3 && P.stance !== 'prone' && !(ws && ws.reload && ws.reload.kind !== 'shell') && !(o.healing && o.healing());
     if (P.sprinting && P.stance === 'crouch') P.stance = 'stand';
-    P.holding = can && !!keys.ShiftLeft && adsT > .6 && scopedOptic() && P.breath > 0;
+    P.holding = can && held('sprint') && adsT > .6 && scopedOptic() && P.breath > 0;
     let spd = P.stance === 'prone' ? 1.1 : P.stance === 'crouch' ? 2.6 : P.sprinting ? 6.4 : 4.7; if (adsT > .5) spd *= .6; if (o.healing && o.healing()) spd *= .5;
     const dir = new THREE.Vector3(str, 0, -fwd); if (dir.lengthSq() > 0) dir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), P.yaw);
-    const acc = P.onG ? 14 : 3; P.vel.x += (dir.x * spd - P.vel.x) * Math.min(1, dt * acc); P.vel.z += (dir.z * spd - P.vel.z) * Math.min(1, dt * acc);
-    if (!P.dead) { P.vel.y -= 13 * dt; P.pos.addScaledVector(P.vel, dt); collide(); const gy = groundY(); if (P.pos.y <= gy) { if (!P.onG && P.vel.y < -4) shake += .2; P.pos.y = gy; P.vel.y = 0; P.onG = true; } else if (P.pos.y > gy + .05) P.onG = false; }
+    const acc = P.onG ? 14 : 3;
+    if (slideT > 0) { const k = slideT / .8, v = 2.6 + 6.6 * k; P.vel.x = slideDir.x * v + dir.x * .8; P.vel.z = slideDir.z * v + dir.z * .8; if (slideT - dt <= 0) P.stance = 'crouch'; }
+    else { P.vel.x += (dir.x * spd - P.vel.x) * Math.min(1, dt * acc); P.vel.z += (dir.z * spd - P.vel.z) * Math.min(1, dt * acc); }
+    if (!P.dead) { P.vel.y -= 13 * dt; P.pos.addScaledVector(P.vel, dt); collide(); const gy = groundY(); if (P.pos.y <= gy) { if (!P.onG && P.vel.y < -4) shake += .2; P.pos.y = gy; P.vel.y = 0; P.onG = true; }
+      else if (P.onG && P.vel.y <= 0 && P.pos.y - gy < .45) { P.pos.y = gy; P.vel.y = 0; } else if (P.pos.y > gy + .05) P.onG = false; }
     const B = o.bounds; P.pos.x = Math.max(B.minX, Math.min(B.maxX, P.pos.x)); P.pos.z = Math.max(B.minZ, Math.min(B.maxZ, P.pos.z));
-    const eyeT = P.stance === 'prone' ? .42 : P.stance === 'crouch' ? 1.12 : 1.65; P.eye += (eyeT - P.eye) * Math.min(1, dt * 8);
-    const leanT = can ? (keys.KeyQ ? -1 : 0) + (keys.KeyE ? 1 : 0) : 0; P.lean += (leanT * (P.stance === 'prone' ? 0 : 1) - P.lean) * Math.min(1, dt * 9);
+    const eyeT = slideT > 0 ? .9 : P.stance === 'prone' ? .42 : P.stance === 'crouch' ? 1.12 : 1.65; P.eye += (eyeT - P.eye) * Math.min(1, dt * 8);
+    const leanT = can ? (held('leanL') ? -1 : 0) + (held('leanR') ? 1 : 0) : 0; P.lean += (leanT * (P.stance === 'prone' ? 0 : 1) - P.lean) * Math.min(1, dt * 9);
     const sp = Math.hypot(P.vel.x, P.vel.z); if (P.onG && sp > .5) { P.bob += dt * sp * 1.9; P.stepT -= dt * sp; if (P.stepT <= 0) { P.stepT = 2.2; snd.step(P.stance === 'crouch' ? .4 : 1); } }
     if (P.holding) P.breath = Math.max(0, P.breath - dt / 5); else P.breath = Math.min(1, P.breath + dt / 6);
     if (el.breath) { el.breath.hidden = !(scopedOptic() && adsT > .6); el.breathI.style.width = (P.breath * 100) + '%'; }
@@ -563,16 +625,17 @@ export function createFP(o) {
     if (tnow - lastShot > .18) { if (recAcc > 0) { recPool += recAcc; recAcc = 0; } shotIdx = 0; }
     if (recPool > 0) { const d = recPool * Math.min(1, dt * 7 * (w ? attFx(w).rec : 1)); P.pitch -= d; recPool -= d; if (recPool < 1e-4) recPool = 0; }
     bloom *= Math.pow(.02, dt);
+    if (recQ > 0) { const d = Math.min(recQ, Math.max(recQ * Math.min(1, dt * 28), .0004)); P.pitch += d; recQ -= d; } // 반동을 한 프레임에 확 올리지 않고 짧게 나눠 올림
     const canAds = ws && !(ws.reload && ws.reload.kind !== 'shell') && !P.sprinting && !w.thr && ws.draw >= 1 && can;
     adsT += (((ads && canAds) ? 1 : 0) - adsT) * Math.min(1, dt * (scopedOptic() ? 9 : 13) * (w ? attFx(w).ads : 1));
     const zoom = 1 + (adsZoom() - 1) * ease(adsT); cam2.fov = (o.fov || 72) / zoom; cam2.updateProjectionMatrix();
     const scopeOn = scopedOptic() && !w.rig;
     const swayAmp = (w ? attFx(w).sway : 1) * (scopeOn ? 1 : .25) * (P.holding ? .08 : 1) * (P.stance === 'prone' ? .35 : P.stance === 'crouch' ? .7 : 1) * adsT;
     const sx = (Math.sin(tnow * .9) * .6 + Math.sin(tnow * 2.3) * .25) * .0035 * swayAmp, sy = (Math.sin(tnow * 1.3 + 1) * .6 + Math.sin(tnow * .5) * .3) * .003 * swayAmp;
-    shake *= Math.pow(.004, dt); const sh = shake * .006;
+    shake *= Math.pow(.004, dt); const sh = (scopedOptic() && adsT > .6) ? 0 : shake * .006;
     const bobY = Math.sin(P.bob * 2) * .03 * (1 - adsT * .8) * (P.sprinting ? 1.6 : 1), bobX = Math.cos(P.bob) * .025 * (1 - adsT * .8);
     const side = new THREE.Vector3(Math.cos(P.yaw), 0, -Math.sin(P.yaw));
-    if (!P.dead) { cam2.position.set(P.pos.x, P.pos.y + P.eye + bobY, P.pos.z).addScaledVector(side, P.lean * .38 + bobX * .2); cam2.rotation.set(P.pitch + sy + (Math.random() - .5) * sh, P.yaw + sx + (Math.random() - .5) * sh, -P.lean * .22, 'YXZ'); }
+    if (!P.dead) { cam2.position.set(P.pos.x, P.pos.y + P.eye + bobY, P.pos.z).addScaledVector(side, P.lean * .38 + bobX * .2); cam2.rotation.set(P.pitch + sy + (Math.random() - .5) * sh, P.yaw + sx + (Math.random() - .5) * sh, -P.lean * .22 + (slideT > 0 ? .06 * Math.min(1, slideT * 3) : 0), 'YXZ'); }
     vm.visible = !P.dead;
     if (cur && ws) { const s = cur.userData.size, len = Math.max(s.x, s.z); ws.draw = Math.min(1, ws.draw + dt * 2.6); const op = optic();
       let hip, ad;
@@ -595,9 +658,10 @@ export function createFP(o) {
       if (ws) { const dr = 1 - ease(ws.draw); py -= .35 * dr; rx -= .9 * dr; }
       vm.position.set(px, py, pz); vm.rotation.set(rx, ry, rz);
       const scoped = scopeOn && adsT > .86; cur.visible = !scoped && !(ws && ws.reload && ws.reload.kind === 'throw');
-      if (el.scope) { el.scope.style.opacity = scoped ? 1 : 0; el.scope.dataset.ret = op.ret || 'mil'; if (el.zoomTxt) el.zoomTxt.textContent = (op.zoom || 8) + '×'; }
+      if (!(ws && ws.cycle)) scopeBob *= Math.pow(.001, dt);
+      if (el.scope) { el.scope.style.transform = scopeBob > .01 ? `translate(${scopeBob * -6}px, ${scopeBob * 16}px) rotate(${scopeBob * -1.2}deg)` : ''; el.scope.style.opacity = scoped ? 1 : 0; el.scope.dataset.ret = op.ret || 'mil'; if (el.zoomTxt) el.zoomTxt.textContent = (op.zoom || 8) + '×'; }
       if (el.dotRet) { el.dotRet.style.opacity = (op.type === 'dot' || op.type === 'holo') && adsT > .85 ? 1 : 0; el.dotRet.dataset.t = op.type || ''; }
-      flashT -= dt; flash.visible = flashT > 0 && !scoped; flash.scale.setScalar(.1 + Math.random() * .06); flashLight.intensity = flashT > 0 ? 8 : 0;
+      flashT -= dt; flash.visible = flashT > 0 && !scoped; flash.scale.setScalar(.1 + Math.random() * .06);
     } else { if (el.scope) el.scope.style.opacity = 0; if (el.dotRet) el.dotRet.style.opacity = 0; }
     if (el.cross) { const moving = sp > .5; const gap = 6 + (moving ? 10 : 0) + (P.onG ? 0 : 14) + bloom * 900 + (P.stance === 'crouch' ? -2 : P.stance === 'prone' ? -3 : 0);
       el.cross.style.opacity = adsT > .4 || P.sprinting || P.dead ? 0 : 1; if (cr.length) { cr[0].style.top = (-gap - 9) + 'px'; cr[1].style.top = gap + 'px'; cr[2].style.left = (-gap - 9) + 'px'; cr[3].style.left = gap + 'px'; } }
@@ -605,10 +669,10 @@ export function createFP(o) {
     stateT -= dt; if (stateT <= 0 && el.state && el.state.textContent) el.state.textContent = '';
     if (el.strip) { const deg = ((-cam2.rotation.y * 180 / Math.PI) % 360 + 360) % 360; el.strip.style.transform = `translateX(${-(deg * 3 + 1200) + el.strip.parentNode.clientWidth / 2}px)`; }
     stepBullets(dt);
-    sparks.forEach(p => { p.userData.t += dt; p.userData.v.y -= 9 * dt; p.position.addScaledVector(p.userData.v, dt); if (p.position.y < .01) { p.position.y = .01; p.userData.v.set(0, 0, 0); } }); for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].userData.t > (sparks[i].userData.blood ? .9 : .5)) { S2.remove(sparks[i]); sparks.splice(i, 1); }
+    sparks.forEach(p => { p.userData.t += dt; p.userData.v.y -= 9 * dt; p.position.addScaledVector(p.userData.v, dt); const gy0 = o.groundAt ? o.groundAt(p.position.x, p.position.z) : 0; if (p.position.y < gy0 + .01) { p.position.y = gy0 + .01; p.userData.v.set(0, 0, 0); } }); for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].userData.t > (sparks[i].userData.blood ? .9 : .5)) { S2.remove(sparks[i]); sparks.splice(i, 1); }
     puffs.forEach(m => { const u = m.userData; u.t += dt; const k = u.t / u.life; m.position.addScaledVector(u.v, dt); m.scale.setScalar(u.size * (.4 + k * .9)); m.material.opacity = .8 * (1 - k); }); for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].userData.t > puffs[i].userData.life) { S2.remove(puffs[i]); puffs[i].material.dispose(); puffs.splice(i, 1); }
     updArms(dt); updSmoke(dt);
-    casings.forEach(c => { const u = c.userData; u.t += dt; if (c.position.y > .02) { u.v.y -= 9.8 * dt; c.position.addScaledVector(u.v, dt); c.rotation.x += u.s.x * dt; c.rotation.y += u.s.y * dt; } else { c.position.y = .02; if (!u.land) { u.land = 1; snd.tone(4200 + Math.random() * 800, .05, .015, 'sine'); } } });
+    casings.forEach(c => { const u = c.userData; u.t += dt; const cg = (u.gy ??= o.groundAt ? o.groundAt(c.position.x, c.position.z) : 0); if (c.position.y > cg + .02) { u.v.y -= 9.8 * dt; c.position.addScaledVector(u.v, dt); c.rotation.x += u.s.x * dt; c.rotation.y += u.s.y * dt; } else { c.position.y = cg + .02; if (!u.land) { u.land = 1; snd.tone(4200 + Math.random() * 800, .05, .015, 'sine'); } } });
     targets.forEach(t => { const u = t.userData; u.av -= u.ang * 40 * dt; u.av *= Math.pow(.15, dt); u.ang += u.av * dt; t.rotation.x = -u.ang * .6; });
     thrown.forEach(c => { const u = c.userData; u.t += dt; u.v.y -= 9.8 * dt; const prev = c.position.clone(); c.position.addScaledVector(u.v, dt); c.rotation.x += dt * 8;
       for (const b of solids) { const q = c.position; if (q.x > b.min.x - .05 && q.x < b.max.x + .05 && q.y > b.min.y - .05 && q.y < b.max.y + .05 && q.z > b.min.z - .05 && q.z < b.max.z + .05) {
@@ -622,7 +686,7 @@ export function createFP(o) {
     for (let i = fires.length - 1; i >= 0; i--) { const f = fires[i]; f.t += dt; if (f.t > f.life) { fires.splice(i, 1); continue; } if (o.selfDamage && !P.dead && Math.hypot(P.pos.x - f.p.x, P.pos.z - f.p.z) < 3 && P.pos.y < 1) { f.acc = (f.acc || 0) + dt; if (f.acc > .5) { f.acc = 0; o.selfDamage(6, 'incendiary_east', f.owner); } } }
   }
   function setEnabled(v) { enabled = v; vmRoot.visible = v; if (!v) { fireHeld = false; ads = false; } }
-  return { toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
+  return { get knifeOut() { return knifeOut }, get sliding() { return slideT > 0 }, toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
 }
 
 /* ---------- HUD (사격장·배틀로얄 공용) ---------- */
@@ -716,6 +780,9 @@ export function mountHud(container, keysHtml) {
   <div class="bot"><div class="state" id="stateTxt"></div><div class="ammo"><b id="ammoN">30</b><small id="ammoR">90</small><em id="modeTxt">자동</em></div><div class="hp"><i id="hpI"></i><u id="hpHeal"></u></div></div>
   <div class="slots" id="slotsEl"></div>
   <div class="inv" id="invPanel" hidden></div>
-  <div class="start" id="start"><div><b>클릭해서 시작</b><span>마우스로 시선, 좌클릭 사격, 우클릭을 누르고 있는 동안 조준, H 인벤토리</span><span>Esc를 누르면 마우스가 풀려요</span></div></div>`;
-  container.appendChild(d); return d;
+  <div class="start" id="start"><div><button class="kbtn" id="keysOpen">키 설정</button><div class="kin" id="keysIn" hidden></div><b>클릭해서 시작</b><span>마우스로 시선, 좌클릭 사격, 우클릭을 누르고 있는 동안 조준, H 인벤토리</span><span>Esc를 누르면 마우스가 풀려요</span></div></div>`;
+  container.appendChild(d);
+  { const st = document.createElement('style'); st.textContent = KEY_CSS + `.kbtn{appearance:none;justify-self:center;border:1px solid #fff5;background:#0008;color:#eee;font:600 12px var(--body,system-ui);padding:5px 12px;cursor:pointer;margin-bottom:6px}.kin{background:#0d0e0cf2;border:1px solid #fff3;padding:12px;max-height:56vh;overflow:auto;text-align:left;width:min(820px,90vw);cursor:default}`; document.head.appendChild(st);
+    let kp = null; const kin = d.querySelector('#keysIn'); d.querySelector('#keysOpen').addEventListener('click', e => { e.stopPropagation(); kin.hidden = !kin.hidden; if (!kp) kp = keyPanel(kin); else kp.draw(); }); kin.addEventListener('click', e => e.stopPropagation()); }
+  return d;
 }
