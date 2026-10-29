@@ -171,7 +171,10 @@ const cam = new THREE.PerspectiveCamera(72, 1, .06, 1200); S.add(cam);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.2); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 320 }); sun.shadow.bias = -.0005; sun.shadow.normalBias = .03; S.add(sun); S.add(sun.target);
 const hemi = new THREE.HemisphereLight(0xc7d6e8, 0x4a4434, .8); S.add(hemi);
 const SUN_DIR = new THREE.Vector3(-.45, .85, -.3).normalize();
-function placeSun() { const tx = 96 / 2048; const x = Math.round(cam.position.x / tx) * tx, z = Math.round(cam.position.z / tx) * tx, y = 0; sun.target.position.set(x, y, z); sun.position.set(x + SUN_DIR.x * 150, y + SUN_DIR.y * 150, z + SUN_DIR.z * 150); }
+// 그림자 범위를 해 방향 기준 격자(그림자 픽셀 단위)에 맞춰 옮김. 조준 흔들림·걷기 때 그림자 경계가 반짝이며 밝기가 바뀌던 문제 수정
+const SUN_R = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), SUN_DIR).normalize(), SUN_U = new THREE.Vector3().crossVectors(SUN_DIR, SUN_R).normalize(), _sp = new THREE.Vector3();
+function placeSun() { const tx = 96 / 2048; const src = alive && fp.P ? fp.P.pos : cam.position; const a = Math.round(src.dot(SUN_R) / tx) * tx, b = Math.round(src.dot(SUN_U) / tx) * tx, c = Math.round(src.dot(SUN_DIR) / 4) * 4;
+  _sp.copy(SUN_R).multiplyScalar(a).addScaledVector(SUN_U, b).addScaledVector(SUN_DIR, c); sun.target.position.copy(_sp); sun.position.copy(_sp).addScaledVector(SUN_DIR, 150); sun.target.updateMatrixWorld(); }
 const detTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 6000; i++) { const v = 170 + Math.random() * 85; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(160, 160); t.anisotropy = 8; return t; })();
 let terrain = null, water = null;
 // 자기장 벽
@@ -434,9 +437,9 @@ function setAvGun(av, k) { const U = av.userData; if (U.gunK === k) return; U.gu
   U.tR = grip.clone(); U.tL = Hd.l ? g.position.clone().add(rotH(Hd.l)) : w.pistol ? grip.clone().add(new THREE.Vector3(-.04, -.02, .01)) : null;
   U.gunTip.position.copy(g.position).add(rotH(m.userData.muzzle.position)); }
 function removeAvatar(r) { if (r.av) S.remove(r.av); r.av = null; }
-let zone = null, zoneOut = false;
+let zone = null, zoneOut = false, clockOff = null;
 function onSnap(m) {
-  const now = performance.now(); zone = m.z; $('aliveN').textContent = m.alive;
+  const pnow = performance.now(); let now = pnow; if (m.ts) { const off = pnow - m.ts; if (clockOff === null || off < clockOff) clockOff = off; else clockOff += (off - clockOff) * .002; now = m.ts + clockOff; } zone = m.z; $('aliveN').textContent = m.alive;
   const seen = new Set();
   for (const a of m.ps) { const [id, x, y, z, yaw, pitch, s, w, al, ads, arm, burn] = a; seen.add(id); if (id === myId) { if (!al && alive && phase === 'live') { /* 서버 기준 사망 */ } continue; }
     let r = remotes.get(id); if (!r) { const pl = lastLobby && lastLobby.players.find(p => p.id === id); r = { id, name: pl ? pl.name : '?', buf: [], alive: true, av: null, step: 0, flash: 0 }; remotes.set(id, r); }
@@ -444,8 +447,9 @@ function onSnap(m) {
   for (const [id, r] of remotes) if (!seen.has(id)) { removeAvatar(r); remotes.delete(id); }
 }
 const _a = new THREE.Vector3();
-function updRemotes(dt) { const rt = performance.now() - 110;
-  for (const r of remotes.values()) { const b = r.buf; if (!b.length) continue; let i = b.length - 1; while (i > 0 && b[i - 1].t > rt) i--; const s1 = b[i], s0 = b[Math.max(0, i - 1)]; const u = s1.t === s0.t ? 1 : Math.max(0, Math.min(1, (rt - s0.t) / (s1.t - s0.t)));
+// 서버가 보낸 시각으로 120ms 늦게 보간 (도착 간격이 들쭉날쭉해도 봇이 끊기지 않게). 새 정보가 늦으면 최대 0.1초까지 앞으로 이어 그림
+function updRemotes(dt) { const rt = performance.now() - 120;
+  for (const r of remotes.values()) { const b = r.buf; if (!b.length) continue; let i = b.length - 1; while (i > 0 && b[i - 1].t > rt) i--; if (i === 0 && b.length > 1) i = 1; const s1 = b[i], s0 = b[Math.max(0, i - 1)]; const u = s1.t === s0.t ? 1 : Math.max(0, Math.min(i === b.length - 1 ? 1 + 80 / Math.max(1, s1.t - s0.t) : 1, (rt - s0.t) / (s1.t - s0.t)));
     const x = s0.x + (s1.x - s0.x) * u, y = s0.y + (s1.y - s0.y) * u, z = s0.z + (s1.z - s0.z) * u; let dy = s1.yaw - s0.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); const yaw = s0.yaw + dy * u, pitch = s0.pitch + (s1.pitch - s0.pitch) * u;
     if (!r.av) { const pl = lastLobby && lastLobby.players.find(p => p.id === r.id); if (pl) r.name = pl.name; r.av = makeAvatar(r.id, r.name); }
     const A = r.av, U = A.userData; const spd = r.lx !== undefined ? Math.hypot(x - r.lx, z - r.lz) / Math.max(dt, 1e-3) : 0; r.lx = x; r.lz = z; r.x = x; r.y = y; r.z = z; r.yaw = yaw; r.pitch = pitch;

@@ -205,12 +205,12 @@ export function resetParts(m) { const pr = m.userData.parts; for (const k in pr)
 
 /* ---------- 조준경 메시 ---------- */
 const optMat = new THREE.MeshStandardMaterial({ color: 0x1d1f1e, roughness: .45, metalness: .6 });
-const lensMat = new THREE.MeshStandardMaterial({ color: 0x3b6a8a, roughness: .05, metalness: .2, transparent: true, opacity: .35, depthWrite: false });
+const lensMat = new THREE.MeshBasicMaterial({ color: 0x3b6a8a, transparent: true, opacity: .35, depthWrite: false, toneMapped: false });
 const redMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
 const optTubeMat = new THREE.MeshStandardMaterial({ color: 0x1d1f1e, roughness: .45, metalness: .6, side: THREE.DoubleSide });
-const dotGlassMat = new THREE.MeshStandardMaterial({ color: 0xff8a40, emissive: 0x301000, roughness: .05, metalness: .5, transparent: true, opacity: .14, depthWrite: false, side: THREE.DoubleSide }); // 앞 렌즈: 붉은 코팅
-const rearGlassMat = new THREE.MeshStandardMaterial({ color: 0x6aa0c8, roughness: .05, metalness: .3, transparent: true, opacity: .07, depthWrite: false, side: THREE.DoubleSide });
-const holoGlassMat = new THREE.MeshStandardMaterial({ color: 0x7ac0e0, emissive: 0x041018, roughness: .04, metalness: .4, transparent: true, opacity: .13, depthWrite: false, side: THREE.DoubleSide });
+const dotGlassMat = new THREE.MeshBasicMaterial({ color: 0xffa060, transparent: true, opacity: .07, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false }); // 앞 렌즈: 붉은 코팅 (조명 반사 없음 → 흔들려도 밝기 일정)
+const rearGlassMat = new THREE.MeshBasicMaterial({ color: 0x8ab8d8, transparent: true, opacity: .035, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+const holoGlassMat = new THREE.MeshBasicMaterial({ color: 0x90c8e8, transparent: true, opacity: .06, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
 const rubberMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: .95 }), optEdgeMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3c, roughness: .35, metalness: .8 });
 function cyl(r1, r2, len, mat) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, 20, 1, mat === lensMat), mat); m.rotation.z = H; m.castShadow = true; return m; }
 export function buildOptic(key) {
@@ -509,6 +509,11 @@ export function createFP(o) {
       case 'holster': if (ws || knifeOut) { knifeOut = false; holster(); } break;
       default: o.onAction && o.onAction(a, true, e); }
   }
+  // 마우스 휠: 위로 굴리면 이전 무기, 아래로 굴리면 다음 무기 (비어 있는 칸은 건너뜀)
+  let wheelT = 0;
+  o.canvas.addEventListener('wheel', e => { if (!enabled || !locked || !ctrl() || invOpen) return; e.preventDefault(); const now = performance.now(); if (now - wheelT < 110 || Math.abs(e.deltaY) < 1) return; wheelT = now;
+    const dir = e.deltaY > 0 ? 1 : -1, have = [0, 1, 2, 3].filter(i => slots[i]); if (!have.length) return; const from = knifeOut || curSlot == null ? (dir > 0 ? -1 : 4) : curSlot;
+    let n = from; for (let k = 0; k < 4; k++) { n = (n + dir + 4) % 4; if (slots[n] && (n !== curSlot || knifeOut)) break; } if (!slots[n] || (n === curSlot && !knifeOut)) return; knifeOut = false; equip(n); snd.tone(900, .03, .02, 'sine'); }, { passive: false });
   document.addEventListener('mousedown', e => { if (!enabled || (el.start && !el.start.hidden)) return; if (e.target !== o.canvas && !locked) return; ac();
     if (e.button === 3 || e.button === 4) e.preventDefault();
     if (!locked && e.target === o.canvas) lockNow();

@@ -140,9 +140,12 @@ function tickBots(dt) { const z = G.zone; const all = [...players.values()].filt
       const fwdK = d > pref * 1.3 ? 1 : d < pref * .6 ? -.8 : 0; mx = dx / d * fwdK + (-dz / d) * B.strafe * .9; mz = dz / d * fwdK + (dx / d) * B.strafe * .9; spd = 3.6; }
     else { B.wpT -= dt; if (!B.wp || B.wpT <= 0 || Math.hypot(B.wp[0] - p.pos[0], B.wp[1] - p.pos[2]) < 4) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * Math.min(zr, G.map.half) * .8; B.wp = [(z ? z.cx : 0) + Math.cos(a) * r, (z ? z.cz : 0) + Math.sin(a) * r]; B.wpT = 15 + Math.random() * 10; }
       mx = B.wp[0] - p.pos[0]; mz = B.wp[1] - p.pos[2]; }
-    const ml = Math.hypot(mx, mz); if (ml > .01) { mx /= ml; mz /= ml; const nx = p.pos[0] + mx * spd * dt, nz = p.pos[2] + mz * spd * dt; const lim = G.map.half - 2;
+    // 속도를 부드럽게 바꿈 (방향을 갑자기 꺾으면 화면에서 순간이동처럼 보임)
+    const ml = Math.hypot(mx, mz); if (ml > .01) { mx /= ml; mz /= ml; } else { mx = mz = 0; spd = 0; }
+    const ka = Math.min(1, dt * 5); B.vx = (B.vx || 0) + (mx * spd - (B.vx || 0)) * ka; B.vz = (B.vz || 0) + (mz * spd - (B.vz || 0)) * ka;
+    if (Math.hypot(B.vx, B.vz) > .05) { mx = B.vx; mz = B.vz; const nx = p.pos[0] + B.vx * dt, nz = p.pos[2] + B.vz * dt; const lim = G.map.half - 2;
       const tryMove = (x, z2) => { x = Math.max(-lim, Math.min(lim, x)); z2 = Math.max(-lim, Math.min(lim, z2)); const y = G.map.h(x, z2); if (G.map.look && G.map.look.water && y < -.2) return false; if (blockedAt(x, y, z2)) return false; p.pos = [x, y, z2]; return true; };
-      if (!tryMove(nx, nz) && !tryMove(nx, p.pos[2]) && !tryMove(p.pos[0], nz)) { B.stuck += dt; if (B.stuck > .6) { B.stuck = 0; B.strafe = -B.strafe; B.wp = null; } } else B.stuck = 0;
+      if (!tryMove(nx, nz) && !tryMove(nx, p.pos[2]) && !tryMove(p.pos[0], nz)) { B.vx *= .3; B.vz *= .3; B.stuck += dt; if (B.stuck > .6) { B.stuck = 0; B.strafe = -B.strafe; B.wp = null; } } else B.stuck = 0;
       if (!T) { const want = Math.atan2(-mx, -mz); const dy = ((want - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI; p.yaw += Math.sign(dy) * Math.min(Math.abs(dy), dt * 4); p.pitch *= .9; } }
     p.s = 0;
     // 3) 조준과 사격
@@ -210,7 +213,7 @@ setInterval(() => {
   if (G.phase !== 'lobby') {
     const z = G.zone; const ps = []; for (const p of players.values()) if (p.inGame) ps.push([p.id, +p.pos[0].toFixed(2), +p.pos[1].toFixed(2), +p.pos[2].toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.s, p.w, p.alive ? 1 : 0, p.a, p.armor ? ARMOR[p.armor.k].lvl : 0, p.b || 0]);
     tickMs += performance.now() - t0; tickN++;
-    bcast({ t: 'snap', ps, z: z && [+z.cx.toFixed(1), +z.cz.toFixed(1), +z.r.toFixed(1), +z.ncx.toFixed(1), +z.ncz.toFixed(1), z.nr, z.st, Math.max(0, Math.ceil(z.tl)), z.dps, z.ph], alive: ps.filter(x => x[8]).length });
+    bcast({ t: 'snap', ts: now, ps, z: z && [+z.cx.toFixed(1), +z.cz.toFixed(1), +z.r.toFixed(1), +z.ncx.toFixed(1), +z.ncz.toFixed(1), z.nr, z.st, Math.max(0, Math.ceil(z.tl)), z.dps, z.ph], alive: ps.filter(x => x[8]).length });
   }
 }, 50);
 

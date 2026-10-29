@@ -79,7 +79,7 @@ export function poseAvatar(av, dt, st) { const U = av.userData;
   // 그림자는 가까운 사람만 (멀리 있는 그림자는 안 보이는데 비용만 큼)
   const sh = (st.dist || 0) < 45; if (U.shadowOn !== sh) { U.shadowOn = sh; U.model.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
   // 멀리 있으면 애니메이션을 띄엄띄엄 계산
-  U.acc = (U.acc || 0) + dt; U.frame++; const far = (st.dist || 0) > 70; if (far && U.frame % 4) return; const adt = U.acc; U.acc = 0;
+  U.acc = (U.acc || 0) + dt; U.frame++; const far = (st.dist || 0) > 90; if (far && U.frame % 2) return; const adt = U.acc; U.acc = 0;
   const A = U.act, spd = st.dead || pr > .5 ? 0 : st.spd;
   const run = Math.max(0, Math.min(1, (spd - 3.2) / 1.6)), mv = Math.max(0, Math.min(1, spd / 1.2));
   if (A.idle) A.idle.setEffectiveWeight(1 - mv); if (A.walk) { A.walk.setEffectiveWeight(mv * (1 - run)); A.walk.timeScale = Math.max(.6, Math.min(1.7, spd / (U.crouchT > .5 ? 1.0 : 1.5))); } if (A.run) { A.run.setEffectiveWeight(mv * run); A.run.timeScale = Math.max(.7, Math.min(1.4, spd / 5)); }
