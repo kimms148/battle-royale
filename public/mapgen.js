@@ -5,15 +5,15 @@ export function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0
 /* 맵 5종: 장식은 빼고 엄폐물(건물·모래주머니·방벽·컨테이너·바위·폐벽) 위주. 언덕은 고지대 교전용.
    hills: [개수, 높이 범위, 반지름 범위], mesa: 꼭대기가 평평한 언덕, towns: 마을 수, look: 색 */
 export const MAPS = {
-  farm: { name: '초원 마을', half: 220, hills: [11, [4, 13], [25, 60]], towns: 5, houses: [5, 9], cover: 1, rocks: 60,
+  farm: { name: '초원 마을', half: 220, hills: [11, [4, 13], [25, 60]], towns: 7, houses: [8, 13], field: 26, cover: 1, rocks: 60,
     look: { g1: '#55663a', g2: '#7d7a50', g3: '#8c8a80', sky: ['#5b7fa8', '#a9bccb', '#d8cdb8', '#6d6a5c'], fog: 0xb4b8b4, sun: 0xfff0d8, hemi: [0xc7d6e8, 0x4a4434], wall: { brick: 0x8a4c3c, plaster: 0xb9ad97 } } },
-  desert: { name: '사막 협곡', half: 230, hills: [15, [6, 20], [22, 50]], mesa: 1, towns: 4, houses: [4, 7], cover: 1.1, rocks: 80,
+  desert: { name: '사막 협곡', half: 230, hills: [15, [6, 20], [22, 50]], mesa: 1, towns: 6, houses: [7, 11], field: 22, cover: 1.1, rocks: 80,
     look: { g1: '#c4a56c', g2: '#b0824f', g3: '#9a6a44', sky: ['#4f86c0', '#9cc2dc', '#f0dcb4', '#b08860'], fog: 0xe0cca4, sun: 0xfff0d0, hemi: [0xd8e4f0, 0x8a6a40], wall: { brick: 0xc89a6a, plaster: 0xd8c4a0 } } },
-  snow: { name: '설원 고지', half: 210, hills: [14, [6, 24], [24, 55]], towns: 4, houses: [4, 7], cover: 1, rocks: 70,
+  snow: { name: '설원 고지', half: 210, hills: [14, [6, 24], [24, 55]], towns: 6, houses: [7, 11], field: 22, cover: 1, rocks: 70,
     look: { g1: '#e6ebee', g2: '#c8d0d6', g3: '#7c848c', sky: ['#7a90a8', '#b8c6d4', '#e4e8ec', '#9aa4ae'], fog: 0xdfe6ec, sun: 0xf2f6ff, hemi: [0xe8eef6, 0x7a8088], wall: { brick: 0x6a5a50, plaster: 0xa8a49c } } },
   ruins: { name: '폐허 도시', half: 150, hills: [4, [2, 6], [20, 40]], towns: 0, grid: 1, cover: 1.4, rocks: 30,
     look: { g1: '#6b6862', g2: '#57544e', g3: '#45423e', sky: ['#4a5260', '#8a8e94', '#b8b2a6', '#5a5650'], fog: 0x9a9790, sun: 0xffe8cc, hemi: [0xb0b8c4, 0x403c36], wall: { brick: 0x7a5a4a, plaster: 0x9a968c } } },
-  island: { name: '바위섬', half: 170, hills: [6, [5, 14], [20, 40]], island: 1, towns: 3, houses: [4, 7], cover: 1, rocks: 70,
+  island: { name: '바위섬', half: 170, hills: [6, [5, 14], [20, 40]], island: 1, towns: 4, houses: [7, 11], field: 14, cover: 1, rocks: 70,
     look: { g1: '#6a8a44', g2: '#d8c890', g3: '#8a8478', sky: ['#3f7fc4', '#9cd0ec', '#e8f0ec', '#5a8aa0'], fog: 0xbfd8e4, sun: 0xfff4dc, hemi: [0xcfe4f4, 0x4a5a3a], wall: { brick: 0x9a5a44, plaster: 0xe0d8c4 }, water: 1 } },
 };
 export const MAP_IDS = Object.keys(MAPS);
@@ -31,7 +31,7 @@ export function genMap(seed, id = 'farm') {
     if (M.island) { const d = Math.hypot(x, z) / H; h = h * Math.max(0, 1 - d * d) + 6 * (1 - d * 1.15) ; } else if (e > .9) h *= Math.max(0, (1 - e) / .1);
     return h; };
   const towns = []; const TN = ['포치키', '야스나야', '밀리타', '로족', '스쿨', '조르지'];
-  for (let i = 0; i < (M.towns || 0); i++) { let t, k = 0; do { t = { x: rr(-H + 55, H - 55), z: rr(-H + 55, H - 55) }; k++; } while (k < 60 && (towns.some(o => Math.hypot(o.x - t.x, o.z - t.z) < 110) || (M.island && Math.hypot(t.x, t.z) > H * .6))); t.lv = raw(t.x, t.z); towns.push(t); }
+  for (let i = 0; i < (M.towns || 0); i++) { let t, k = 0; do { t = { x: rr(-H + 55, H - 55), z: rr(-H + 55, H - 55) }; k++; } while (k < 80 && (towns.some(o => Math.hypot(o.x - t.x, o.z - t.z) < 85) || (M.island && Math.hypot(t.x, t.z) > H * .6))); t.lv = raw(t.x, t.z); towns.push(t); }
   const hAt = (x, z) => { let h = raw(x, z); for (const t of towns) { const d = Math.hypot(x - t.x, z - t.z); const k = Math.max(0, Math.min(1, 1 - (d - 38) / 26)); if (k > 0) h += (t.lv - h) * k * k * (3 - 2 * k); } return M.island ? h : Math.max(0, h); };
   if (M.grid) { const lv = raw(0, 0); towns.push({ x: 0, z: 0, lv, grid: 1 }); }
   const hAt2 = M.grid ? (x, z) => { const r0 = raw(x, z), d = Math.max(Math.abs(x), Math.abs(z)); const k = Math.max(0, Math.min(1, 1 - (d - H * .62) / 20)); return Math.max(0, r0 + (towns[0].lv - r0) * k); } : hAt;
@@ -58,6 +58,36 @@ export function genMap(seed, id = 'farm') {
     B(x, base - .5, z, w, 1, d, 'found'); B(x, base + hh + .15, z, w + .4, .3, d + .4, 'roof');
     if (w > 9 && R() < .6) wall(x0 + .3, z, x - 1, z, hh, mat, 0, base);
     const n = Math.round(w * d / 30) + 1; for (let i = 0; i < n; i++) loot.push([+rr(x0 + 1, x1 - 1).toFixed(2), +base.toFixed(2), +rr(z0 + 1, z1 - 1).toFixed(2)]); }
+  // 2층집: 아래층 문·창문, 위층 창문, 계단(한 칸 0.29m) 과 계단 구멍이 있는 2층 바닥
+  function house2(x, z, w, d, mat) { foot.push({ x, z, w, d }); const base = baseOf(x, z, w, d), x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2, F = 3.2;
+    const dr = [0, rr(.45, .7), 0, 0]; if (R() < .5) dr[2] = rr(.4, .7);
+    wall(x0, z0, x1, z0, F, mat, 0, base, rr(.55, .75)); wall(x0, z1, x1, z1, F, mat, dr[1], base, 0); wall(x0, z0, x0, z1, F, mat, dr[2], base, dr[2] ? 0 : .5); wall(x1, z0, x1, z1, F, mat, 0, base, .5);
+    wall(x0, z0, x1, z0, F, mat, 0, base + F, rr(.3, .7)); wall(x0, z1, x1, z1, F, mat, 0, base + F, rr(.3, .7)); wall(x0, z0, x0, z1, F, mat, 0, base + F, .5); wall(x1, z0, x1, z1, F, mat, 0, base + F, .5);
+    const sx = x0 + .5, run = .38, sw = 1.2; for (let i = 0; i < 11; i++) { const hgt = (i + 1) * .29; B(sx + run * (i + .5), base + hgt / 2, z0 + .3 + sw / 2, run, hgt, sw, 'stair'); }
+    const hx1 = sx + run * 11 + .1; B((x0 + x1) / 2, base + F, (z0 + .3 + sw + z1) / 2, w, .25, z1 - (z0 + .3 + sw), 'floor'); B((hx1 + x1) / 2, base + F, z0 + (.3 + sw) / 2, x1 - hx1, .25, .3 + sw, 'floor');
+    B(x0 + .2 + (hx1 - x0) / 2, base + F + .55, z0 + .3 + sw + .05, hx1 - x0 - .4, 1.1, .1, 'stair');
+    B(x, base - .5, z, w, 1, d, 'found'); B(x, base + F * 2 + .15, z, w + .4, .3, d + .4, 'roof');
+    for (let i = 0; i < 2; i++) loot.push([+rr(x0 + 1, x1 - 1).toFixed(2), +base.toFixed(2), +rr(z0 + 2, z1 - 1).toFixed(2)]); for (let i = 0; i < 2; i++) loot.push([+rr(x0 + 1, x1 - 1).toFixed(2), +(base + F + .13).toFixed(2), +rr(z0 + 2, z1 - 1).toFixed(2)]); }
+  // 들판 건물: 헛간, 창고 단지(담장+컨테이너+경비실), 감시탑, 주유소, 작은 창고
+  function barn(x, z) { const w = rr(12, 16), d = rr(8, 10); if (!free(x, z, w, d, 4) || !slopeOk(x, z, w, d, 1.4)) return false; foot.push({ x, z, w, d }); const base = baseOf(x, z, w, d), hh = rr(4.5, 5.5), x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
+    wall(x0, z0, x1, z0, hh, 'wood', .5, base); wall(x0, z1, x1, z1, hh, 'wood', .5, base); wall(x0, z0, x0, z1, hh, 'wood', 0, base, .5); wall(x1, z0, x1, z1, hh, 'wood', 0, base, .5);
+    B(x, base + hh + .15, z, w + .6, .3, d + .6, 'roof'); B(x, base - .5, z, w, 1, d, 'found'); B(x - w / 4, base + .6, z, 1.2, 1.2, 1.2, 'crate'); B(x + w / 4, base + .6, z + 1, 1.2, 1.2, 1.2, 'crate');
+    for (let i = 0; i < 3; i++) loot.push([+rr(x0 + 1, x1 - 1).toFixed(2), +base.toFixed(2), +rr(z0 + 1, z1 - 1).toFixed(2)]); return true; }
+  function compound(x, z) { const S0 = rr(22, 30); if (!free(x, z, S0, S0, 4) || !slopeOk(x, z, S0, S0, 2.5)) return false; foot.push({ x, z, w: S0, d: S0 }); const b = baseOf(x, z, S0, S0), h2 = 2.2, x0 = x - S0 / 2, x1 = x + S0 / 2, z0 = z - S0 / 2, z1 = z + S0 / 2;
+    wall(x0, z0, x1, z0, h2, 'barrier', .5, b); wall(x0, z1, x1, z1, h2, 'barrier', 0, b); wall(x0, z0, x0, z1, h2, 'barrier', R() < .5 ? .3 : 0, b); wall(x1, z0, x1, z1, h2, 'barrier', 0, b);
+    for (let i = 0; i < 3; i++) { const rot = R() < .5; const cx = x + rr(-S0 / 4, S0 / 4), cz = z + rr(-S0 / 4, S0 / 4); B(cx, b + 1.3, cz, rot ? 2.4 : 6, 2.6, rot ? 6 : 2.4, R() < .5 ? 'cont1' : 'cont2'); loot.push([+(cx + (rot ? 1.8 : 0)).toFixed(2), +b.toFixed(2), +(cz + (rot ? 0 : 1.8)).toFixed(2)]); }
+    const hx = x + S0 / 2 - 4.5, hz = z - S0 / 2 + 4; wall(hx - 3, hz - 2.5, hx + 3, hz - 2.5, 3, 'plaster', 0, b, .5); wall(hx - 3, hz + 2.5, hx + 3, hz + 2.5, 3, 'plaster', .5, b); wall(hx - 3, hz - 2.5, hx - 3, hz + 2.5, 3, 'plaster', 0, b, .5); wall(hx + 3, hz - 2.5, hx + 3, hz + 2.5, 3, 'plaster', 0, b);
+    B(hx, b + 3.15, hz, 6.4, .3, 5.4, 'roof'); loot.push([hx, +b.toFixed(2), hz]); return true; }
+  function tower(x, z) { if (!free(x, z + 3, 7, 14, 3)) return false; foot.push({ x, z: z + 3, w: 7, d: 14 }); const b = baseOf(x, z, 4, 4), T = 6;
+    for (const [dx, dz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) B(x + dx, b + T / 2, z + dz, .3, T, .3, 'wood');
+    B(x, b + T, z, 3.8, .2, 3.8, 'wood'); for (const [dx, dz, w2, d2] of [[0, -1.8, 3.8, .2], [0, 1.8, 3.8, .2], [-1.8, 0, .2, 3.8]]) B(x + dx, b + T + .55, z + dz, w2, .9, d2, 'wood'); B(x, b + T + 2.4, z, 4.2, .2, 4.2, 'roof');
+    for (let i = 0; i < 20; i++) { const hgt = (i + 1) * .3; B(x + 2.4, b + hgt - .15, z + 1.9 + (19 - i) * .38, .9, .3, .38, 'wood'); } loot.push([x, +(b + T + .1).toFixed(2), z]); return true; }
+  function gas(x, z) { if (!free(x, z, 16, 12, 4) || !slopeOk(x, z, 16, 12, 1)) return false; foot.push({ x, z, w: 16, d: 12 }); const b = baseOf(x, z, 16, 12);
+    for (const dx of [-5, 5]) for (const dz of [-1.5, 1.5]) B(x + dx, b + 2.2, z - 2 + dz, .4, 4.4, .4, 'metal'); B(x, b + 4.5, z - 2, 14, .25, 6, 'roof'); for (const dx of [-2.5, 2.5]) B(x + dx, b + .7, z - 2, .8, 1.4, .6, 'cont2');
+    const sz = z + 4; wall(x - 4, sz - 2, x + 4, sz - 2, 3, 'plaster', .5, b); wall(x - 4, sz + 2, x + 4, sz + 2, 3, 'plaster', 0, b, .5); wall(x - 4, sz - 2, x - 4, sz + 2, 3, 'plaster', 0, b, .5); wall(x + 4, sz - 2, x + 4, sz + 2, 3, 'plaster', 0, b);
+    B(x, b + 3.15, sz, 8.4, .3, 4.4, 'roof'); B(x, b - .5, z, 16, 1, 12, 'found'); loot.push([x, +b.toFixed(2), sz], [x + 3, +b.toFixed(2), z - 2]); return true; }
+  function shed(x, z) { const w = rr(4, 6), d = rr(4, 5); if (!free(x, z, w, d, 2) || !slopeOk(x, z, w, d, 1)) return false; foot.push({ x, z, w, d }); const b = baseOf(x, z, w, d), x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
+    wall(x0, z0, x1, z0, 2.8, 'wood', 0, b, .5); wall(x0, z1, x1, z1, 2.8, 'wood', .5, b); wall(x0, z0, x0, z1, 2.8, 'wood', 0, b); wall(x1, z0, x1, z1, 2.8, 'wood', 0, b, .5); B(x, b + 2.95, z, w + .3, .3, d + .3, 'roof'); loot.push([x, +b.toFixed(2), z]); return true; }
   // 엄폐물 조각들
   const sandbag = (x, z, ang, n) => { for (let i = 0; i < n; i++) { const a = ang + (i - (n - 1) / 2) * .0; const px = x + Math.cos(ang) * (i - (n - 1) / 2) * 1.2, pz = z + Math.sin(ang) * (i - (n - 1) / 2) * 1.2; const hor = Math.abs(Math.cos(ang)) > .7; BG(px, pz, hor ? 1.2 : .6, 1, hor ? .6 : 1.2, 'sand'); } };
   const nest = (x, z) => { const b = baseOf(x, z, 4, 4); sandbag(x, z - 1.8, 0, 3); sandbag(x - 1.8, z, H, 3); sandbag(x + 1.8, z, H, 3); loot.push([x, +b.toFixed(2), z]); };
@@ -65,12 +95,14 @@ export function genMap(seed, id = 'farm') {
   /* ---- 마을 ---- */
   towns.forEach((t, ti) => { if (t.grid) return; names.push([TN[ti % TN.length], +t.x.toFixed(1), +t.z.toFixed(1)]);
     const cnt = M.houses[0] + Math.floor(R() * (M.houses[1] - M.houses[0] + 1)); for (let i = 0; i < cnt; i++) { const big = R() < .25; const w = big ? rr(14, 20) : rr(7, 11), d = big ? rr(10, 14) : rr(7, 10), hh = big ? rr(5, 6.5) : rr(3, 3.4);
-      for (let k = 0; k < 25; k++) { const x = t.x + rr(-42, 42), z = t.z + rr(-42, 42); if (free(x, z, w, d, 4) && slopeOk(x, z, w, d, 1.2)) { house(x, z, w, d, hh, big ? 'metal' : wallMats[Math.floor(R() * 2)], big); break; } } }
+      for (let k = 0; k < 25; k++) { const x = t.x + rr(-42, 42), z = t.z + rr(-42, 42); if (free(x, z, w, d, 3) && slopeOk(x, z, w, d, 1.2)) { if (!big && R() < .35 && w > 8) house2(x, z, w, Math.max(d, 8), wallMats[Math.floor(R() * 2)]); else house(x, z, w, d, hh, big ? 'metal' : wallMats[Math.floor(R() * 2)], big); break; } } }
     for (let i = 0; i < 6; i++) { const x = t.x + rr(-45, 45), z = t.z + rr(-45, 45); if (free(x, z, 4, 1, 1)) { foot.push({ x, z, w: 4, d: 1 }); sandbag(x, z, R() < .5 ? 0 : H, 3); } } });
+  /* ---- 들판 건물 ---- */
+  { const kinds = [barn, compound, tower, gas, shed, shed, barn, tower]; let made = 0; for (let k = 0; k < (M.field || 0) * 8 && made < (M.field || 0); k++) { const x = rr(-H + 25, H - 25), z = rr(-H + 25, H - 25); if (kinds[Math.floor(R() * kinds.length)](x, z)) made++; } }
   /* ---- 폐허 도시: 격자 블록, 무너진 건물, 폐벽 ---- */
   if (M.grid) { names.push(['도심', 0, 0]); const step = 30; for (let gx = -H + 30; gx <= H - 30; gx += step) for (let gz = -H + 30; gz <= H - 30; gz += step) { if (R() < .12) continue; const w = rr(12, 20), d = rr(10, 18);
       const x = gx + rr(-3, 3), z = gz + rr(-3, 3); if (!free(x, z, w, d, 3)) continue;
-      if (R() < .7) house(x, z, w, d, R() < .4 ? rr(6, 8) : rr(3.2, 3.6), wallMats[Math.floor(R() * 2)], w > 15);
+      if (R() < .35) house2(x, z, w, Math.max(d, 8), wallMats[Math.floor(R() * 2)]); else if (R() < .55) house(x, z, w, d, R() < .4 ? rr(6, 8) : rr(3.2, 3.6), wallMats[Math.floor(R() * 2)], w > 15);
       else { foot.push({ x, z, w, d }); const base = baseOf(x, z, w, d); for (let i = 0; i < 4; i++) { const len = rr(4, 9), hh = rr(1.2, 3), hor = R() < .5; B(x + rr(-w / 3, w / 3), base + hh / 2, z + rr(-d / 3, d / 3), hor ? len : .4, hh, hor ? .4 : len, 'brick'); } loot.push([x, +base.toFixed(2), z]); } }
     for (let i = 0; i < 50; i++) { const x = rr(-H + 8, H - 8), z = rr(-H + 8, H - 8); if (!free(x, z, 3, 3, 1)) continue; foot.push({ x, z, w: 3, d: 3 }); BG(x, z, rr(2, 4), rr(.6, 1.4), rr(1, 2.5), 'rubble'); } }
   /* ---- 들판 엄폐물 ---- */

@@ -257,7 +257,7 @@ export function createFP(o) {
   // o: {scene, cam, hitables, solids, targets, bounds, el, slots, onHitPlayer, onShot, onThrow, onBoomSelf, onPick, canControl, startAmmo}
   const S2 = o.scene, cam2 = o.cam, hitables = o.hitables, solids = o.solids, targets = o.targets || [];
   const $ = id => document.getElementById(id);
-  const el = { fp: $('fp'), start: $('start'), scope: $('scope'), cross: $('cross'), hitm: $('hitm'), dist: $('dist'), state: $('stateTxt'), breath: $('breath'), breathI: $('breathI'), stance: $('stanceTxt'), ammoN: $('ammoN'), ammoR: $('ammoR'), mode: $('modeTxt'), slots: $('slotsEl'), strip: $('strip'), flash: $('flashbang'), dotRet: $('dotRet'), zoomTxt: $('zoomTxt') };
+  const el = { fp: $('fp'), start: $('start'), scope: $('scope'), cross: $('cross'), hitm: $('hitm'), dist: $('dist'), state: $('stateTxt'), breath: $('breath'), breathI: $('breathI'), stance: $('stanceTxt'), ammoN: $('ammoN'), ammoR: $('ammoR'), mode: $('modeTxt'), slots: $('slotsEl'), strip: $('strip'), flash: $('flashbang'), dotRet: $('dotRet'), zoomTxt: $('zoomTxt'), thrUi: $('thrUi'), thrBar: $('thrBar'), thrTxt: $('thrTxt'), fuses: $('fuses'), burn: $('burnv') };
   const vmRoot = new THREE.Group(); cam2.add(vmRoot); const vm = new THREE.Group(); vmRoot.add(vm);
   const flashTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(.3, 'rgba(255,170,60,.9)'); gr.addColorStop(1, 'rgba(255,90,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const FLASH = new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
@@ -271,7 +271,8 @@ export function createFP(o) {
   function takeReserve(w, n) { if (ammoPool && !w.thr) { const t = Math.min(n, ammoPool[w.cal] || 0); ammoPool[w.cal] = (ammoPool[w.cal] || 0) - t; return t; } const v = invOf(w); const t = Math.min(n, v.reserve); v.reserve -= t; return t; }
   const P = { pos: new THREE.Vector3().copy(o.spawn || new THREE.Vector3(0, 0, 6)), vel: new THREE.Vector3(), yaw: 0, pitch: 0, stance: 'stand', eye: 1.65, onG: true, lean: 0, breath: 1, stepT: 0, bob: 0, sprinting: false, holding: false, dead: false };
   let cur = null, curSlot = -1, ws = null, locked = false, dragLook = null, keys = {}, fireHeld = false, ads = false, adsHoldStart = 0, adsT = 0, hipT = 1, recPool = 0, recAcc = 0, lastShot = -9, shotIdx = 0, bloom = 0, kick = 0, kickR = 0, shake = 0, flashT = 0, swayX = 0, swayY = 0, mdx = 0, mdy = 0, burstLeft = 0, blow = 0, enabled = false, hitmT = 0, stateT = 0, blind = 0;
-  const bullets = [], decals = [], sparks = [], casings = [], thrown = [], booms = [], fires = [];
+  const bullets = [], decals = [], sparks = [], casings = [], thrown = [], booms = [];
+  function bounceSnd(c, sp) { const d = c.position.distanceTo(cam2.position); if (d < 40) snd.tone(1400 + Math.random() * 600, .04, .05 * Math.min(1, sp / 8) * (1 - d / 40), 'square'); }
   const ray = new THREE.Raycaster();
   const tracerGeo = new THREE.CylinderGeometry(.006, .006, 1, 4).rotateX(H), bulletGeo = new THREE.CylinderGeometry(.0035, .0035, 1, 4).rotateX(H);
   const casingGeo = new THREE.CylinderGeometry(.005, .005, .022, 6), casingMat = new THREE.MeshStandardMaterial({ color: 0xc9a043, metalness: .8, roughness: .3 }), shellMat = new THREE.MeshStandardMaterial({ color: 0xa02a1c, roughness: .6 }), proxyMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: .6, metalness: .4 });
@@ -300,7 +301,7 @@ export function createFP(o) {
   function scopedOptic() { return optic().type === 'scope'; }
 
   async function equip(s) {
-    if (!slots[s]) return; curSlot = s; const w = WK[slots[s]];
+    if (!slots[s]) return; if (ws && ws.w.thr && thr.pulled) { const k = ws.w.k; const p = handWorld(); spawnThrown(k, p, P.vel.clone(), true, undefined, thr.fuse); o.onThrow && o.onThrow(k, p, P.vel.clone(), thr.fuse); invOf(ws.w).reserve--; setState('핀 뽑은 수류탄을 떨어뜨렸어요'); } resetThr(); curSlot = s; const w = WK[slots[s]];
     const m = await getModel(w); if (slots[curSlot] !== w.k || curSlot !== s) return;
     vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.userData.muzzle.add(flash); cur = m;
     if (optSel[w.k] !== undefined) attachOptic(m, w, optSel[w.k]); applyAtts(m, w);
@@ -366,8 +367,10 @@ export function createFP(o) {
     const rW = cur.localToWorld(Hd.r.clone()); let lW = Hd.l ? cur.localToWorld((U.gripHand || Hd.l).clone()) : null;
     if (Hd.l && U.parts.pump) { const d = partDelta('pump'); if (d) lW.add(d); }
     const R = ws.reload;
-    if (R && R.kind === 'throw') { poseArm(AR, toCam(rW), SH_R, true); poseArm(AL, new THREE.Vector3(-.2, -.3, -.3), SH_L, true); AR.g.visible = R.t < .35; return; }
-    if (w.thr) { poseArm(AR, toCam(rW).add(new THREE.Vector3(0, -.02, .01)), SH_R, true); poseArm(AL, new THREE.Vector3(-.18, -.27 + br, -.34), SH_L, true); return; }
+    if (R && R.kind === 'throw') { const u = Math.min(1, R.t / .3), sw = Math.sin(u * Math.PI * .5); poseArm(AR, new THREE.Vector3(.2 - .22 * sw, -.05 - .2 * sw, -.35 - .3 * sw), SH_R, true); poseArm(AL, new THREE.Vector3(-.2, -.3, -.3), SH_L, true); AR.g.visible = R.t < .45; return; }
+    if (w.thr) { const rc0 = toCam(rW).add(new THREE.Vector3(0, -.02, .01)); poseArm(AR, rc0, SH_R, true);
+      if (thr.pinT < .4) { const u = thr.pinT / .4; const top = rc0.clone().add(new THREE.Vector3(-.01, .07, -.01)); const out2 = new THREE.Vector3(-.16, -.15, -.38); poseArm(AL, u < .45 ? new THREE.Vector3(-.18, -.27, -.34).lerp(top, ease(u / .45)) : top.clone().lerp(out2, ease((u - .45) / .55)), SH_L, false); }
+      else if (thr.charging) poseArm(AL, new THREE.Vector3(-.17, -.1 - .04 * thr.power, -.52), SH_L, false); else poseArm(AL, new THREE.Vector3(-.18, -.27 + br, -.34), SH_L, true); return; }
     let lc = lW ? toCam(lW.clone()) : null; const rc = toCam(rW.clone());
     if (R && R.kind === 'mag' && lc) { const T = R.t, mOut = .3, slap = w.rt * .62, boltS = w.rt * .68; const mg = U.clip ? U.clipObj : U.parts.mag ? U.parts.mag.n : U.proxy;
       const wgt = Math.min(ease((T - .05) / .25), 1 - ease((T - slap - .05) / .2)); if (wgt > 0 && mg.visible !== false) { const mp = toCam(mg.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, -.035, 0)); lc.lerp(mp, wgt); }
@@ -400,10 +403,10 @@ export function createFP(o) {
     for (const a of acts) act(a, true, e); }
   function release(code) { keys[code] = false; for (const a of actsOf(code)) act(a, false); }
   function act(a, down, e) {
-    if (!down) { if (a === 'fire') fireHeld = false; if (a === 'ads') ads = false; o.onAction && o.onAction(a, false); return; }
+    if (!down) { if (a === 'fire') fireHeld = false; if (a === 'ads') { ads = false; thr.charging = false; thr.power = 0; } o.onAction && o.onAction(a, false); return; }
     switch (a) {
-      case 'fire': fireHeld = true; tryFire(true); break;
-      case 'ads': ads = true; break;
+      case 'fire': if (ws && ws.w.thr) { if (canFire()) throwIt(thr.charging ? .2 + .8 * thr.power : .5); break; } fireHeld = true; tryFire(true); break;
+      case 'ads': if (ws && ws.w.thr) { if (ws.draw >= 1 && !(ws.reload && ws.reload.kind === 'throw') && invOf(ws.w).reserve > 0) { pullPin(); thr.charging = true; thr.power = 0; } break; } ads = true; break;
       case 'reload': startReload(); break;
       case 'mode': if (ws) { const v = invOf(ws.w); if (ws.w.modes.length < 2) setState(ws.w.name + '은(는) ' + ws.w.modes[0] + '만 돼요'); else { v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); setState(ws.w.modes[v.mode]); } updHud(); } break;
       case 'crouch': if (P.sprinting && P.onG && slideCd <= 0) startSlide(); else P.stance = P.stance === 'crouch' ? 'stand' : 'crouch'; break;
@@ -488,11 +491,81 @@ export function createFP(o) {
     if (pl && b.mine) { const head = !!hit.object.userData.head, limb = !!hit.object.userData.limb; const dist = hit.point.distanceTo(b.start); const cls = wclass(b.w) || 'AR', fall = falloff(cls, dist); const M = ZONE_MUL[cls] || ZONE_MUL.AR;
       snd.hit(); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(pl, Math.round(b.w.dmg * fall * (head ? M[0] : limb ? M[2] : M[1])), head, b.w.k, hit.point, bdir); } }
   function showHit(t) { hitmT = .25; el.dist.textContent = t; }
-  function throwIt() { if (!cur || ws.reload) return; const v = invOf(ws.w); if (v.reserve <= 0) { setState('투척물 없음'); return; }
-    const p = new THREE.Vector3(); cur.getWorldPosition(p); const dir = new THREE.Vector3(0, .22, -1).applyQuaternion(cam2.quaternion).normalize();
-    const vel = dir.multiplyScalar(17).add(P.vel); spawnThrown(ws.w.k, p, vel, true); o.onThrow && o.onThrow(ws.w.k, p, vel);
-    cur.visible = false; ws.reload = { t: 0, dur: 1, kind: 'throw' }; v.reserve--; updHud(); }
-  function spawnThrown(k, p, vel, mine, owner) { const m = cache[k]; const c = new THREE.Group(); if (m) c.add(skClone(m.userData.norm)); c.position.copy(p); S2.add(c); c.userData = { v: vel.clone(), t: 0, k, mine, owner }; thrown.push(c); }
+  /* ----- 투척물: 우클릭을 누르는 동안 게이지가 차고 좌클릭으로 던짐. 수류탄·섬광탄은 우클릭할 때 핀을 뽑고 그때부터 시간이 감 ----- */
+  const FUSE = { frag_west: 4.2, flashbang_west: 2.4, smoke_west: 2.2, incendiary_east: 0 }, PIN = { frag_west: 1, flashbang_west: 1 };
+  let thr = { pulled: false, fuse: 0, charging: false, power: 0, pinT: 9 };
+  function resetThr() { thr = { pulled: false, fuse: 0, charging: false, power: 0, pinT: 9 }; }
+  const pinMat = new THREE.MeshStandardMaterial({ color: 0xb0b4b8, metalness: .9, roughness: .3 }), pinGeo = new THREE.TorusGeometry(.012, .0025, 6, 14);
+  function handWorld() { const p = new THREE.Vector3(); (cur || vm).getWorldPosition(p); return p; }
+  function pullPin() { if (!ws || !ws.w.thr || thr.pulled || !PIN[ws.w.k]) return; thr.pulled = true; thr.fuse = FUSE[ws.w.k]; thr.pinT = 0;
+    snd.tone(2400, .05, .06, 'triangle'); setTimeout(() => snd.tone(1800, .08, .05, 'triangle'), 90); snd.noise(.06, 7000, .1, 6);
+    const pin = new THREE.Mesh(pinGeo, pinMat); pin.position.copy(handWorld()).add(new THREE.Vector3(0, .05, 0)); const right = new THREE.Vector3(-1, 0, 0).applyQuaternion(cam2.quaternion);
+    pin.userData = { v: right.multiplyScalar(1.6).add(new THREE.Vector3(0, 1.8, 0)).add(P.vel.clone().multiplyScalar(.8)), t: 0, s: new THREE.Vector3(14, 9, 0) }; S2.add(pin); casings.push(pin); }
+  function throwIt(power = .5) { if (!cur || (ws.reload && ws.reload.kind === 'throw')) return; const k = ws.w.k, v = invOf(ws.w); if (v.reserve <= 0) { setState('투척물 없음'); return; }
+    if (PIN[k] && !thr.pulled) { thr.pulled = true; thr.fuse = FUSE[k]; snd.tone(2400, .05, .05, 'triangle'); }
+    const p = handWorld(); const dir = new THREE.Vector3(0, .16 + .14 * (1 - power), -1).applyQuaternion(cam2.quaternion).normalize();
+    const vel = dir.multiplyScalar(6 + 18 * power).add(P.vel.clone().multiplyScalar(.8)); const fuse = PIN[k] ? thr.fuse : FUSE[k];
+    spawnThrown(k, p, vel, true, undefined, fuse); o.onThrow && o.onThrow(k, p, vel, fuse); snd.noise(.2, 1500, .12, 3);
+    cur.visible = false; ws.reload = { t: 0, dur: .85, kind: 'throw' }; v.reserve--; resetThr(); updHud(); }
+  const arcMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: .25, gapSize: .2, transparent: true, opacity: .75, depthTest: false }); const arcGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 60 }, () => new THREE.Vector3()));
+  const arcLine = new THREE.Line(arcGeo, arcMat); arcLine.frustumCulled = false; arcLine.renderOrder = 5; arcLine.visible = false; S2.add(arcLine);
+  const arcEnd = new THREE.Mesh(new THREE.RingGeometry(.35, .45, 24).rotateX(-H), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7, depthTest: false })); arcEnd.renderOrder = 5; arcEnd.visible = false; S2.add(arcEnd);
+  function updArc() { const on = !!(ws && ws.w.thr && thr.charging && enabled && !P.dead); arcLine.visible = arcEnd.visible = on; if (!on) return; const power = .2 + .8 * thr.power;
+    const p = handWorld(), v = new THREE.Vector3(0, .16 + .14 * (1 - power), -1).applyQuaternion(cam2.quaternion).normalize().multiplyScalar(6 + 18 * power).add(P.vel.clone().multiplyScalar(.8)); const pos = arcGeo.attributes.position; let last = p.clone(), hit = false;
+    for (let i = 0; i < 60; i++) { if (!hit) { const n = p.clone().addScaledVector(v, .05); v.y -= 9.8 * .05; const gy = o.groundAt ? o.groundAt(n.x, n.z) : 0; const st = o.rayStatic ? o.rayStatic(p, n.clone().sub(p).normalize(), n.distanceTo(p)) : null;
+        if (st) { p.copy(st.point); hit = true; } else if (n.y < gy + .05) { p.set(n.x, gy + .05, n.z); hit = true; } else p.copy(n); last = p.clone(); } pos.setXYZ(i, last.x, last.y, last.z); }
+    pos.needsUpdate = true; arcLine.computeLineDistances(); arcEnd.position.copy(last).add(new THREE.Vector3(0, .03, 0)); }
+  function cookOff() { const k = ws.w.k, v = invOf(ws.w); const p = handWorld(); resetThr(); v.reserve--; setState('손에서 터졌어요'); o.onThrow && o.onThrow(k, p, new THREE.Vector3(), 0); boom(p, k, true); if (cur) cur.visible = false; ws.reload = { t: 0, dur: .85, kind: 'throw' }; updHud(); }
+  function spawnThrown(k, p, vel, mine, owner, fuse) { const m = cache[k]; const c = new THREE.Group(); if (m) c.add(skClone(m.userData.norm)); c.position.copy(p); S2.add(c);
+    c.userData = { v: vel.clone(), t: 0, k, mine, owner, fuse: fuse ?? (FUSE[k] || 3), spin: new THREE.Vector3(6 + Math.random() * 6, Math.random() * 4, Math.random() * 3), bounce: 0 }; thrown.push(c);
+    if (mine && PIN[k] && el.fuses) { const d = document.createElement('div'); d.className = 'fuse'; el.fuses.appendChild(d); c.userData.lbl = d; } if ((fuse ?? 1) <= 0 && k !== 'incendiary_east') c.userData.t = 1e9; }
+  /* ----- 폭발·불 효과 (스프라이트 입자) ----- */
+  const radial = (stops) => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); stops.forEach(([o2, col]) => gr.addColorStop(o2, col)); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const fireTex = radial([[0, 'rgba(255,255,230,1)'], [.25, 'rgba(255,210,90,.95)'], [.55, 'rgba(255,110,20,.6)'], [1, 'rgba(120,20,0,0)']]);
+  const flameTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 96, 2, 32, 80, 60); gr.addColorStop(0, 'rgba(255,250,210,1)'); gr.addColorStop(.3, 'rgba(255,190,60,.9)'); gr.addColorStop(.65, 'rgba(240,80,10,.45)'); gr.addColorStop(1, 'rgba(120,20,0,0)'); g.fillStyle = gr; g.beginPath(); g.moveTo(32, 2); g.bezierCurveTo(60, 50, 62, 110, 32, 126); g.bezierCurveTo(2, 110, 4, 50, 32, 2); g.fill(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const smokeTex = radial([[0, 'rgba(60,58,55,.95)'], [.5, 'rgba(50,48,46,.55)'], [1, 'rgba(40,40,40,0)']]);
+  const scorchTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); for (let i = 0; i < 40; i++) { const a = Math.random() * 6.28, r = Math.random() * 46, sz = 6 + Math.random() * (30 - r / 2); g.fillStyle = `rgba(14,12,10,${.25 + Math.random() * .35})`; g.beginPath(); g.arc(64 + Math.cos(a) * r, 64 + Math.sin(a) * r, sz, 0, 7); g.fill(); } const gr = g.createRadialGradient(64, 64, 0, 64, 64, 60); gr.addColorStop(0, 'rgba(8,6,5,.9)'); gr.addColorStop(1, 'rgba(8,6,5,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const scorchMat = new THREE.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
+  const fxs = [], ringGeo2 = new THREE.RingGeometry(.8, 1, 40).rotateX(-H), debrisMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: .9 });
+  function fx(tex, color, pos, vel, life, s0, s1, op, add, grav = 0, drag = 0, rise = 0) { const m = new THREE.SpriteMaterial({ map: tex, color, transparent: true, depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending, opacity: op, rotation: Math.random() * 6.28 });
+    const sp = new THREE.Sprite(m); sp.position.copy(pos); sp.scale.setScalar(s0); S2.add(sp); fxs.push({ o: sp, v: vel, t: 0, life, s0, s1, op, grav, drag, rot: (Math.random() - .5) * 1.2 }); return sp; }
+  function updFx(dt) { for (let i = fxs.length - 1; i >= 0; i--) { const f = fxs[i]; f.t += dt; const k = Math.min(1, f.t / f.life); if (f.v) { f.v.y -= f.grav * dt; f.v.multiplyScalar(Math.max(0, 1 - f.drag * dt)); f.o.position.addScaledVector(f.v, dt); }
+      const ek = 1 - Math.pow(1 - k, 2.2); if (f.o.isSprite) { f.o.scale.setScalar(f.s0 + (f.s1 - f.s0) * ek); f.o.material.rotation += f.rot * dt; } else f.o.scale.setScalar(f.s0 + (f.s1 - f.s0) * ek);
+      f.o.material.opacity = f.op * Math.min(1, f.t / .05) * Math.pow(1 - k, 1.4); if (f.t >= f.life) { S2.remove(f.o); f.o.material.dispose(); fxs.splice(i, 1); } } }
+  const rv = (a, b2) => a + Math.random() * (b2 - a), rdir = (up = 1) => new THREE.Vector3(rv(-1, 1), rv(0, up), rv(-1, 1)).normalize();
+  // 수류탄: 섬광 → 불덩어리 → 파편·불꽃 → 땅 흙먼지 고리 → 검은 연기 기둥, 바닥에 그을음
+  function fxFrag(p) { const gy = o.groundAt ? o.groundAt(p.x, p.z) : 0, g0 = new THREE.Vector3(p.x, Math.max(p.y, gy + .1), p.z);
+    fx(fireTex, 0xffffff, g0, null, .14, 4, 13, 1, true); fx(fireTex, 0xffe0a0, g0, null, .3, 3, 9, .95, true);
+    for (let i = 0; i < 16; i++) fx(fireTex, new THREE.Color().setHSL(.06 + Math.random() * .05, 1, .55), g0.clone().add(rdir(.8).multiplyScalar(rv(.2, 1.2))), rdir(1.2).multiplyScalar(rv(3, 8)), rv(.4, .8), rv(1.2, 2.2), rv(3.5, 6), .95, true, -1, 4);
+    for (let i = 0; i < 22; i++) fx(smokeTex, new THREE.Color().setHSL(0, 0, rv(.12, .3)), g0.clone().add(rdir(.6).multiplyScalar(rv(0, 1.5))), rdir(1).multiplyScalar(rv(.5, 2.5)).add(new THREE.Vector3(0, rv(1, 2.6), 0)), rv(2.5, 5), rv(1.2, 2), rv(4, 7), .8, false, -.15, 1.2);
+    for (let i = 0; i < 18; i++) fx(fireTex, 0xffd070, g0.clone(), rdir(1.3).multiplyScalar(rv(9, 22)), rv(.25, .55), .25, .08, 1, true, 9, 1);
+    for (let i = 0; i < 26; i++) { const d = new THREE.Mesh(chipGeo, debrisMat); d.scale.setScalar(rv(.8, 2.5)); d.position.copy(g0); d.userData = { v: rdir(1.4).multiplyScalar(rv(5, 14)), t: 0, life: rv(1, 1.8) }; S2.add(d); sparks.push(d); }
+    const ring = new THREE.Mesh(ringGeo2, new THREE.MeshBasicMaterial({ color: 0xb8a68a, transparent: true, opacity: .7, depthWrite: false })); ring.position.set(p.x, gy + .15, p.z); S2.add(ring); fxs.push({ o: ring, v: null, t: 0, life: .9, s0: .5, s1: 9, op: .7, grav: 0, drag: 0, rot: 0 });
+    for (let i = 0; i < 12; i++) { const a = i / 12 * 6.28; fx(puffTex, 0xc8b89a, new THREE.Vector3(p.x, gy + .3, p.z), new THREE.Vector3(Math.cos(a) * 9, .6, Math.sin(a) * 9), 1.4, 1, 3.5, .55, false, 0, 2.2); }
+    decal(new THREE.Vector3(p.x, gy + .01, p.z), new THREE.Vector3(0, 1, 0), scorchMat, 4.2); }
+  function fxFlash(p) { fx(fireTex, 0xffffff, p, null, .18, 4, 14, 1, true); for (let i = 0; i < 14; i++) fx(fireTex, 0xfff4d0, p.clone(), rdir(1.2).multiplyScalar(rv(6, 15)), rv(.2, .4), .2, .05, 1, true, 6); for (let i = 0; i < 6; i++) fx(smokeTex, 0x8a8884, p.clone(), rdir(1).multiplyScalar(.8).add(new THREE.Vector3(0, .8, 0)), rv(1.5, 2.5), .6, 2.2, .5, false); }
+  // 화염병: 유리가 깨지며 불이 바닥에 퍼짐. 불꽃 입자가 계속 일렁이고 위로 검은 연기
+  const fires = [];
+  function fxMolotov(p, owner, mine) { const gy = o.groundAt ? o.groundAt(p.x, p.z) : 0, c0 = new THREE.Vector3(p.x, gy, p.z);
+    for (let i = 0; i < 16; i++) fx(fireTex, 0xd8eaff, new THREE.Vector3(p.x, gy + .2, p.z), rdir(1).multiplyScalar(rv(2, 5)), rv(.3, .6), .08, .04, .9, true, 9);
+    fx(fireTex, 0xffb050, new THREE.Vector3(p.x, gy + .4, p.z), null, .35, 1.5, 4.5, 1, true);
+    const flames = []; for (let i = 0; i < 34; i++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 3.4; const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r, y = o.groundAt ? o.groundAt(x, z) : 0;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTex, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 })); sp.position.set(x, y + .4, z); sp.userData = { x, y, z, ph: Math.random() * 6.28, s: rv(.7, 1.5), d: r / 3.4 * .5 }; S2.add(sp); flames.push(sp); }
+    decal(new THREE.Vector3(p.x, gy + .01, p.z), new THREE.Vector3(0, 1, 0), scorchMat, 7.5);
+    fires.push({ p: c0, t: 0, life: 8, r: 3.5, flames, owner, mine, acc: 0, smokeT: 0, snd: 0 }); snd.noise(.3, 6000, .25, 3); snd.noise(1.2, 900, .3, 1.5); }
+  function updFires(dt) { for (let i = fires.length - 1; i >= 0; i--) { const f = fires[i]; f.t += dt; const fade = Math.min(1, f.t / .4, (f.life - f.t) / 1.5), tt = f.t;
+      f.flames.forEach(sp => { const u = sp.userData; const on = Math.max(0, Math.min(1, (tt - u.d) * 4)) * fade; const fl = .75 + .25 * Math.sin(tt * 13 + u.ph) + .15 * Math.sin(tt * 31 + u.ph * 2); sp.scale.set(u.s * .7 * fl, u.s * 1.6 * fl, 1); sp.position.y = u.y + u.s * .7 * fl; sp.material.opacity = .9 * on; });
+      f.smokeT -= dt; if (f.smokeT <= 0 && fade > .2) { f.smokeT = .12; const a = Math.random() * 6.28, r = Math.random() * 2.8; fx(smokeTex, 0x2a2826, new THREE.Vector3(f.p.x + Math.cos(a) * r, f.p.y + 1.5, f.p.z + Math.sin(a) * r), new THREE.Vector3(rv(-.3, .3), rv(1.5, 2.6), rv(-.3, .3)), rv(2, 3.5), 1, 4, .45 * fade, false);
+        if (Math.random() < .5) fx(fireTex, 0xffa040, new THREE.Vector3(f.p.x + Math.cos(a) * r, f.p.y + .6, f.p.z + Math.sin(a) * r), new THREE.Vector3(rv(-.5, .5), rv(2, 4), rv(-.5, .5)), rv(.6, 1.2), .12, .03, 1, true, -1); }
+      f.snd -= dt; if (f.snd <= 0) { f.snd = .25 + Math.random() * .3; const d = f.p.distanceTo(cam2.position); if (d < 40) snd.noise(.2, 1800, .06 * (1 - d / 40), 3); }
+      // 불 속에 있으면 화상 시작 (나가도 3초 동안 계속 탐)
+      if (o.selfDamage && !P.dead && Math.hypot(P.pos.x - f.p.x, P.pos.z - f.p.z) < f.r && Math.abs(P.pos.y - f.p.y) < 1.6 && fade > .3) { if (burnT <= 0) burnAcc = .45; burnT = 3; burnOwner = f.owner; inFire = true; }
+      f.acc += dt; if (f.acc > .5) { f.acc = 0; if (f.mine && o.onFireTick) o.onFireTick(f.p, f.r); }
+      if (f.t > f.life) { f.flames.forEach(sp => { S2.remove(sp); sp.material.dispose(); }); fires.splice(i, 1); } } }
+  let burnT = 0, burnAcc = 0, burnOwner = 0, inFire = false;
+  function updBurn(dt) { if (burnT <= 0 || P.dead) { burnT = 0; if (el.burn) el.burn.style.opacity = 0; inFire = false; return; } burnAcc += dt; if (!inFire) burnT -= dt;
+    if (burnAcc >= .5) { burnAcc = 0; o.selfDamage && o.selfDamage(inFire ? 7 : 4, 'incendiary_east', burnOwner); snd.noise(.15, 700, .2, 3); } inFire = false;
+    if (el.burn) el.burn.style.opacity = Math.min(1, .45 + .25 * Math.sin(performance.now() / 90)); }
   const smokes = [];
   function smokeCloud(p) { const parts2 = []; for (let i = 0; i < 46; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: new THREE.Color().setHSL(0, 0, .62 + Math.random() * .2), transparent: true, depthWrite: false, opacity: 0, rotation: Math.random() * 6.28 }));
       const a = Math.random() * 6.28, r = Math.sqrt(Math.random()); sp.userData = { a, r, h: Math.random(), s: 2.6 + Math.random() * 2.6, rs: (Math.random() - .5) * .3, d: Math.random() * 1.2 }; sp.position.copy(p); S2.add(sp); parts2.push(sp); }
@@ -502,12 +575,14 @@ export function createFP(o) {
         sp.position.set(s0.p.x + Math.cos(u.a + s0.t * .03) * R + wob, s0.p.y + .6 + u.h * (1.2 + 2.6 * Math.min(1, T / 5)) + s0.t * .015, s0.p.z + Math.sin(u.a + s0.t * .03) * R);
         sp.scale.setScalar(u.s * (.35 + .65 * Math.min(1, T / 3)) * (1 + s0.t * .015)); sp.material.rotation += u.rs * dt; sp.material.opacity = .9 * Math.min(1, T / .6) * fade; });
       if (s0.t > s0.life) { s0.parts.forEach(sp => { S2.remove(sp); sp.material.dispose(); }); smokes.splice(i, 1); } } }
-  function boom(p, k, mine, owner) { if (k === 'smoke_west') { smokeCloud(p); snd.noise(2.5, 1200, .25, 1.5); return; } const cfg = { frag_west: [0xffa040, 5, .55, .95], flashbang_west: [0xffffff, 4, .25, 1], smoke_west: [0x9a9a95, 7, 18, .92], incendiary_east: [0xff5a10, 3, 7, .8] }[k];
-    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: cfg[0], transparent: true, opacity: cfg[3], depthWrite: false, side: k === 'smoke_west' ? THREE.DoubleSide : THREE.FrontSide })); m.position.copy(p); m.userData = { t: 0, life: cfg[2], r: cfg[1], o: cfg[3], k }; S2.add(m); booms.push(m);
-    const d = p.distanceTo(cam2.position); snd.boom(Math.max(.1, 1 - d / 200));
-    if (k === 'frag_west') { if (d < 25) shake = Math.min(1.5, shake + (25 - d) / 12); targets.forEach(t => { if (t.position.distanceTo(p) < 7) t.userData.av += 6; }); if (mine && o.onFrag) o.onFrag(p); if (o.selfDamage) { const dd = p.distanceTo(P.pos.clone().setY(P.pos.y + .8)); if (dd < 7) o.selfDamage(Math.round(150 * (1 - dd / 7)), 'frag_west', owner); } }
-    if (k === 'incendiary_east') fires.push({ p: p.clone().setY(0), t: 0, life: 7, mesh: m, owner });
-    if (k === 'flashbang_west') { const dirTo = p.clone().sub(cam2.position).normalize(), f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion); const look = Math.max(0, dirTo.dot(f)); const amt = d < 20 ? Math.max(.3, look) * (1 - d / 22) : 0;
+  function boom(p, k, mine, owner) { const d = p.distanceTo(cam2.position); const later = (f2, extra = 0) => setTimeout(f2, Math.min(600, d / 340 * 1000) + extra);
+    if (k === 'smoke_west') { smokeCloud(p); snd.noise(2.5, 1200, .25, 1.5); return; }
+    if (k === 'frag_west') { fxFrag(p); later(() => { snd.noise(.25, 6000, .9 * Math.max(.1, 1 - d / 160), 3); snd.boom(Math.max(.1, 1 - d / 220)); snd.noise(2.2, 260, .7 * Math.max(.1, 1 - d / 260), 1.4); });
+      if (d < 30) shake = Math.min(1.8, shake + (30 - d) / 10); targets.forEach(t => { if (t.position.distanceTo(p) < 7) t.userData.av += 6; }); if (mine && o.onBoom) o.onBoom(k, p);
+      if (o.selfDamage && !P.dead) { const dd = p.distanceTo(P.pos.clone().setY(P.pos.y + .8)); if (dd < 7) { const cover = o.rayStatic ? o.rayStatic(p.clone().add(new THREE.Vector3(0, .3, 0)), P.pos.clone().setY(P.pos.y + 1).sub(p).normalize(), Math.max(0, dd - .4)) : null; o.selfDamage(Math.round(150 * (1 - dd / 7) * (cover ? .25 : 1)), 'frag_west', owner); } } }
+    if (k === 'incendiary_east') fxMolotov(p, owner, mine);
+    if (k === 'flashbang_west') { fxFlash(p); later(() => snd.noise(.35, 8000, .8 * Math.max(.1, 1 - d / 120), 4)); if (mine && o.onBoom) o.onBoom(k, p);
+      const dirTo = p.clone().sub(cam2.position).normalize(), f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam2.quaternion); const look = Math.max(0, dirTo.dot(f)); const amt = d < 20 ? Math.max(.3, look) * (1 - d / 22) : 0;
       if (amt > 0 && el.flash) { el.flash.style.transition = 'none'; el.flash.style.opacity = Math.min(1, amt * 1.3); requestAnimationFrame(() => { el.flash.style.transition = 'opacity ' + (1 + amt * 3) + 's ease-in'; el.flash.style.opacity = 0; }); snd.tone(3200, 2.5 * amt, .05, 'sine'); } } }
 
   /* ----- 재장전 ----- */
@@ -593,10 +668,10 @@ export function createFP(o) {
   const cr = el.cross ? [...el.cross.children] : [];
 
   /* ----- 이동 · 충돌 ----- */
-  function collide() { for (const b of solids) { const r = .32, top = P.pos.y + P.eye * .95; if (P.pos.y > b.max.y - .05 || top < b.min.y) continue;
+  function collide() { for (const b of solids) { const r = .32, top = P.pos.y + P.eye * .95; if (P.pos.y > b.max.y - .4 || top < b.min.y) continue;
     const cx = Math.max(b.min.x, Math.min(P.pos.x, b.max.x)), cz = Math.max(b.min.z, Math.min(P.pos.z, b.max.z)); const dx = P.pos.x - cx, dz = P.pos.z - cz, d = Math.hypot(dx, dz);
     if (d < r) { if (d > 1e-4) { P.pos.x = cx + dx / d * r; P.pos.z = cz + dz / d * r; } else P.pos.x = b.max.x + r; } } }
-  function groundY() { let g = o.groundAt ? o.groundAt(P.pos.x, P.pos.z) : 0; for (const b of solids) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .35) g = Math.max(g, b.max.y); } return g; }
+  function groundY() { let g = o.groundAt ? o.groundAt(P.pos.x, P.pos.z) : 0; for (const b of solids) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .4) g = Math.max(g, b.max.y); } return g; }
 
   /* ----- 매 프레임 ----- */
   function update(dt) {
@@ -640,7 +715,7 @@ export function createFP(o) {
     if (cur && ws) { const s = cur.userData.size, len = Math.max(s.x, s.z); ws.draw = Math.min(1, ws.draw + dt * 2.6); const op = optic();
       let hip, ad;
       if (w.rig) { hip = w.k === 'fps_rig' ? [0, -.2, -.42] : [.06, -.27, -.62]; ad = w.k === 'fps_rig' ? [0, -.165, -.36] : [0, -.205, -.5]; }
-      else if (w.thr) { hip = [.2, -.2, -.38]; ad = hip; }
+      else if (w.thr) { const pw = thr.charging ? ease(thr.power) : 0; hip = [.2 + .05 * pw, -.2 + .12 * pw, -.38 + .16 * pw]; ad = hip; }
       else if (w.pistol) { hip = [.15, -.16, -.4]; ad = [0, op.type && cur.userData.optic ? -(cur.userData.railY - .003 + op.h) : -s.y / 2 - .008, -.36]; }
       else { hip = [.16, -.13 - s.y * .3, -.22 - len * .3]; const mounted = op.type && cur.userData.optic; ad = [0, mounted ? -(cur.userData.railY - .003 + op.h) : cur.userData.clip ? -(cur.userData.railY + .03) : -(cur.userData.iron ?? s.y / 2 + .012), -len * .5 - .03 + (mounted && op.type !== 'scope' ? .05 : 0)]; }
       const a = ease(adsT); let px = hip[0] + (ad[0] - hip[0]) * a, py = hip[1] + (ad[1] - hip[1]) * a, pz = hip[2] + (ad[2] - hip[2]) * a;
@@ -669,24 +744,30 @@ export function createFP(o) {
     stateT -= dt; if (stateT <= 0 && el.state && el.state.textContent) el.state.textContent = '';
     if (el.strip) { const deg = ((-cam2.rotation.y * 180 / Math.PI) % 360 + 360) % 360; el.strip.style.transform = `translateX(${-(deg * 3 + 1200) + el.strip.parentNode.clientWidth / 2}px)`; }
     stepBullets(dt);
-    sparks.forEach(p => { p.userData.t += dt; p.userData.v.y -= 9 * dt; p.position.addScaledVector(p.userData.v, dt); const gy0 = o.groundAt ? o.groundAt(p.position.x, p.position.z) : 0; if (p.position.y < gy0 + .01) { p.position.y = gy0 + .01; p.userData.v.set(0, 0, 0); } }); for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].userData.t > (sparks[i].userData.blood ? .9 : .5)) { S2.remove(sparks[i]); sparks.splice(i, 1); }
+    sparks.forEach(p => { p.userData.t += dt; p.userData.v.y -= 9 * dt; p.position.addScaledVector(p.userData.v, dt); const gy0 = o.groundAt ? o.groundAt(p.position.x, p.position.z) : 0; if (p.position.y < gy0 + .01) { p.position.y = gy0 + .01; p.userData.v.set(0, 0, 0); } }); for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].userData.t > (sparks[i].userData.life || (sparks[i].userData.blood ? .9 : .5))) { S2.remove(sparks[i]); sparks.splice(i, 1); }
     puffs.forEach(m => { const u = m.userData; u.t += dt; const k = u.t / u.life; m.position.addScaledVector(u.v, dt); m.scale.setScalar(u.size * (.4 + k * .9)); m.material.opacity = .8 * (1 - k); }); for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].userData.t > puffs[i].userData.life) { S2.remove(puffs[i]); puffs[i].material.dispose(); puffs.splice(i, 1); }
     updArms(dt); updSmoke(dt);
     casings.forEach(c => { const u = c.userData; u.t += dt; const cg = (u.gy ??= o.groundAt ? o.groundAt(c.position.x, c.position.z) : 0); if (c.position.y > cg + .02) { u.v.y -= 9.8 * dt; c.position.addScaledVector(u.v, dt); c.rotation.x += u.s.x * dt; c.rotation.y += u.s.y * dt; } else { c.position.y = cg + .02; if (!u.land) { u.land = 1; snd.tone(4200 + Math.random() * 800, .05, .015, 'sine'); } } });
     targets.forEach(t => { const u = t.userData; u.av -= u.ang * 40 * dt; u.av *= Math.pow(.15, dt); u.ang += u.av * dt; t.rotation.x = -u.ang * .6; });
-    thrown.forEach(c => { const u = c.userData; u.t += dt; u.v.y -= 9.8 * dt; const prev = c.position.clone(); c.position.addScaledVector(u.v, dt); c.rotation.x += dt * 8;
+    thrown.forEach(c => { const u = c.userData; u.t += dt; u.v.y -= 9.8 * dt; const prev = c.position.clone(); const sp0 = u.v.length(); c.position.addScaledVector(u.v, dt); c.rotation.x += u.spin.x * dt * Math.min(1, sp0 / 6); c.rotation.y += u.spin.y * dt * Math.min(1, sp0 / 6);
       for (const b of solids) { const q = c.position; if (q.x > b.min.x - .05 && q.x < b.max.x + .05 && q.y > b.min.y - .05 && q.y < b.max.y + .05 && q.z > b.min.z - .05 && q.z < b.max.z + .05) {
         const inX = prev.x <= b.min.x - .05 || prev.x >= b.max.x + .05, inY = prev.y <= b.min.y - .05 || prev.y >= b.max.y + .05;
-        if (inY) { u.v.y *= -.3; u.v.x *= .5; u.v.z *= .5; } else if (inX) u.v.x *= -.4; else u.v.z *= -.4; c.position.copy(prev); if (u.k === 'incendiary_east') u.t = 99; break; } }
+        if (inY) { u.v.y *= -.3; u.v.x *= .5; u.v.z *= .5; } else if (inX) u.v.x *= -.4; else u.v.z *= -.4; c.position.copy(prev); if (u.k === 'incendiary_east') u.t = 99; else if (sp0 > 2) bounceSnd(c, sp0); break; } }
       const gy = o.groundAt ? o.groundAt(c.position.x, c.position.z) : 0;
-      if (c.position.y < gy + .06) { c.position.y = gy + .06; u.v.multiplyScalar(.45); u.v.y *= -.3; if (u.k === 'incendiary_east') u.t = 99; } });
-    for (let i = thrown.length - 1; i >= 0; i--) { const c = thrown[i]; if (c.userData.t > 3) { const p = c.position.clone(); S2.remove(c); thrown.splice(i, 1); boom(p, c.userData.k, c.userData.mine, c.userData.owner); } }
-    booms.forEach(b => { b.userData.t += dt; const k = b.userData.t / b.userData.life; const sm = b.userData.k === 'smoke_west'; b.scale.setScalar(b.userData.r * (sm ? Math.min(1, .2 + k * 4) : b.userData.k === 'incendiary_east' ? 1 : (.3 + k))); if (b.userData.k === 'incendiary_east') b.scale.y = .15 + Math.random() * .05; b.material.opacity = Math.max(0, b.userData.o * (sm ? Math.min(1, (1 - k) * 3) : b.userData.k === 'incendiary_east' ? Math.min(1, (1 - k) * 3) * .7 : (1 - k))); });
+      if (c.position.y < gy + .06) { c.position.y = gy + .06; if (Math.abs(u.v.y) > 2 && u.k !== 'incendiary_east') bounceSnd(c, Math.abs(u.v.y)); u.v.multiplyScalar(.45); u.v.y *= -.3; if (u.k === 'incendiary_east') u.t = 99; }
+      if (u.lbl) { const left = Math.max(0, u.fuse - u.t); const v = c.position.clone().add(new THREE.Vector3(0, .35, 0)).project(cam2); u.lbl.style.display = v.z < 1 ? '' : 'none'; u.lbl.style.left = ((v.x + 1) / 2 * 100) + '%'; u.lbl.style.top = ((1 - v.y) / 2 * 100) + '%'; u.lbl.textContent = left.toFixed(1); u.lbl.classList.toggle('r', left < 1.2); } });
+    for (let i = thrown.length - 1; i >= 0; i--) { const c = thrown[i], u = c.userData; if ((u.k === 'incendiary_east' ? u.t > 6 : u.t >= u.fuse)) { const p = c.position.clone(); S2.remove(c); thrown.splice(i, 1); if (u.lbl) u.lbl.remove(); boom(p, u.k, u.mine, u.owner); } }
+    // 손에 든 수류탄: 핀을 뽑았으면 시간이 줄고, 우클릭 중이면 게이지가 참
+    if (ws && ws.w.thr) { if (thr.pulled && !(ws.reload && ws.reload.kind === 'throw')) { thr.fuse -= dt; if (thr.fuse <= 0) cookOff(); } if (thr.charging) thr.power = Math.min(1, thr.power + dt / 1.1); thr.pinT += dt;
+      if (el.thrUi) { el.thrUi.hidden = false; el.thrBar.style.width = (thr.charging ? thr.power * 100 : 0) + '%'; const nm = ws.w.ko; el.thrTxt.className = thr.pulled && thr.fuse < 1.5 ? 'r' : '';
+        el.thrTxt.textContent = PIN[ws.w.k] ? (thr.pulled ? `핀 뽑음 · ${thr.fuse.toFixed(1)}초 뒤 폭발` : `${nm} · 우클릭: 핀 뽑고 힘 모으기`) : (thr.charging ? `${nm} · 힘 ${Math.round(thr.power * 100)}%` : `${nm} · 우클릭: 힘 모으기`); } }
+    else if (el.thrUi) el.thrUi.hidden = true;
+    updFx(dt); updFires(dt); updBurn(dt); updArc();
+    if (false) booms.forEach(b => { b.userData.t += dt; const k = b.userData.t / b.userData.life; const sm = b.userData.k === 'smoke_west'; b.scale.setScalar(b.userData.r * (sm ? Math.min(1, .2 + k * 4) : b.userData.k === 'incendiary_east' ? 1 : (.3 + k))); if (b.userData.k === 'incendiary_east') b.scale.y = .15 + Math.random() * .05; b.material.opacity = Math.max(0, b.userData.o * (sm ? Math.min(1, (1 - k) * 3) : b.userData.k === 'incendiary_east' ? Math.min(1, (1 - k) * 3) * .7 : (1 - k))); });
     for (let i = booms.length - 1; i >= 0; i--) if (booms[i].userData.t > booms[i].userData.life) { S2.remove(booms[i]); booms.splice(i, 1); }
-    for (let i = fires.length - 1; i >= 0; i--) { const f = fires[i]; f.t += dt; if (f.t > f.life) { fires.splice(i, 1); continue; } if (o.selfDamage && !P.dead && Math.hypot(P.pos.x - f.p.x, P.pos.z - f.p.z) < 3 && P.pos.y < 1) { f.acc = (f.acc || 0) + dt; if (f.acc > .5) { f.acc = 0; o.selfDamage(6, 'incendiary_east', f.owner); } } }
   }
   function setEnabled(v) { enabled = v; vmRoot.visible = v; if (!v) { fireHeld = false; ads = false; } }
-  return { get knifeOut() { return knifeOut }, get sliding() { return slideT > 0 }, toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
+  return { get burning() { return burnT > 0 }, get knifeOut() { return knifeOut }, get sliding() { return slideT > 0 }, toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
 }
 
 /* ---------- HUD (사격장·배틀로얄 공용) ---------- */
@@ -755,6 +836,10 @@ const HUD_CSS = `
 .start b{font-family:var(--display,system-ui);font-size:34px;letter-spacing:.04em}
 .start span{font-size:13px;color:#ddd}
 .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.burnv{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 160px 50px #ff5a10aa;opacity:0;transition:opacity .2s}
+.fuses{position:absolute;inset:0;pointer-events:none}.fuses .fuse{position:absolute;transform:translate(-50%,-100%);font:700 13px var(--mono,monospace);color:#fff;background:#000a;padding:1px 6px;border:1px solid #fff5}.fuses .fuse.r{color:#ff6a4a;border-color:#ff6a4a}
+.thr{position:absolute;left:50%;top:calc(50% + 44px);transform:translateX(-50%);display:grid;gap:4px;justify-items:center;width:220px;font:600 12px var(--body,system-ui);color:#fff;text-shadow:0 1px 2px #000}
+.thr .tb{width:100%;height:6px;background:#0009;border:1px solid #fff4}.thr .tb i{display:block;height:100%;width:0;background:linear-gradient(90deg,#9cc46a,#e0902c,#d65a3a)}.thr span.r{color:#ff6a4a}
 .dmgv{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 120px 30px #b0101099;opacity:0;transition:opacity .4s}
 .inv{position:absolute;inset:6% 8%;background:#0d0e0cee;border:1px solid #fff2;pointer-events:auto;overflow:auto;padding:16px;display:grid;gap:12px;align-content:start;font-family:var(--body,system-ui);z-index:6}
 .inv .ih{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}.inv .ih b{font:700 22px var(--display,system-ui);letter-spacing:.04em}.inv .ih span{font-size:12px;color:#aaa}
@@ -775,7 +860,9 @@ export function mountHud(container, keysHtml) {
   <div class="compass"><div class="strip" id="strip"></div><div class="mark"></div></div>
   <div class="cross" id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="hitm" id="hitm"></div><div class="dist" id="dist"></div>
-  <div class="dmgv" id="dmgv"></div><div class="flash" id="flashbang"></div>
+  <div class="dmgv" id="dmgv"></div><div class="burnv" id="burnv"></div><div class="flash" id="flashbang"></div>
+  <div class="fuses" id="fuses"></div>
+  <div class="thr" id="thrUi" hidden><div class="tb"><i id="thrBar"></i></div><span id="thrTxt"></span></div>
   <div class="stance"><span id="stanceTxt">서기</span><div class="breath" id="breath" hidden><i id="breathI"></i></div><div class="k">${keysHtml || ''}</div></div>
   <div class="bot"><div class="state" id="stateTxt"></div><div class="ammo"><b id="ammoN">30</b><small id="ammoR">90</small><em id="modeTxt">자동</em></div><div class="hp"><i id="hpI"></i><u id="hpHeal"></u></div></div>
   <div class="slots" id="slotsEl"></div>

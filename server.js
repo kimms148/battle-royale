@@ -125,6 +125,7 @@ function tickBots(dt) { const z = G.zone; const all = [...players.values()].filt
   for (const p of all) { const pp = p._pp || p.pos; p.vel = p.vel === undefined ? 0 : p.vel * .8 + Math.hypot(p.pos[0] - pp[0], p.pos[2] - pp[2]) / Math.max(dt, .01) * .2; p._pp = p.pos.slice(); }
   for (const p of all) { if (!p.bot) continue; const B = p.bot, gun = B.gun, D = B.D; B.cd -= dt; B.think -= dt; B.reload -= dt; B.alertT -= dt; B.strafeT -= dt; B.rest -= dt; B.combatT -= dt;
     // 1) 목표 찾기 (0.3초마다)
+    B.blindT = (B.blindT || 0) - dt; if (B.blindT > 0) { B.target = 0; B.think = .3; }
     if (B.think <= 0) { B.think = .3; let best = null, bd = 1e9;
       for (const q of all) { if (q === p) continue; const d = Math.hypot(q.pos[0] - p.pos[0], q.pos[2] - p.pos[2]); if (d > D.view * (gun.cls === 'SR' || gun.cls === 'DMR' ? 1.4 : 1)) continue; const pri = d - (q.id === B.lastHit ? 60 : 0) - (q.bot ? 0 : 10); if (pri < bd && canSee(p, q)) { bd = pri; best = q; } }
       if (best) { if (B.target !== best.id) { B.target = best.id; B.seenT = 0; } B.combatT = 4; } else { if (B.target) { const t = players.get(B.target); if (t && t.alive) { B.wp = [t.pos[0], t.pos[2]]; B.wpT = 8; } } B.target = 0; if (B.lastHit && B.alertT > 0) { const t = players.get(B.lastHit); if (t && t.alive) { B.wp = [t.pos[0], t.pos[2]]; B.wpT = 6; } } } }
@@ -173,9 +174,10 @@ wss.on('connection', ws => {
       case 'join': p.name = String(m.name || '플레이어').slice(0, 14) || '플레이어'; bcast(lobbyMsg()); break;
       case 'start': if (G.phase === 'lobby' && players.size > 0) begin(); break;
       case 'cfg': if (G.phase !== 'lobby') break; if (MAP_IDS.includes(m.map) || m.map === 'random') { CFG.map = m.map; G.mapId = m.map === 'random' ? G.mapId : m.map; } if (Number.isFinite(+m.bots)) CFG.bots = Math.max(0, Math.min(15, m.bots | 0)); if (['easy', 'normal', 'hard'].includes(m.diff)) CFG.diff = m.diff; bcast(lobbyMsg()); break;
-      case 'st': if (!p.alive) break; if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) p.pos = m.p.map((v, i) => i === 1 ? v : Math.max(-(G.map ? G.map.half : MAP.half) - 5, Math.min((G.map ? G.map.half : MAP.half) + 5, v))); p.yaw = +m.y || 0; p.pitch = +m.pi || 0; p.s = m.s | 0; p.w = String(m.w || '').slice(0, 24); p.a = m.a ? 1 : 0; break;
+      case 'st': if (!p.alive) break; if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) p.pos = m.p.map((v, i) => i === 1 ? v : Math.max(-(G.map ? G.map.half : MAP.half) - 5, Math.min((G.map ? G.map.half : MAP.half) + 5, v))); p.yaw = +m.y || 0; p.pitch = +m.pi || 0; p.s = m.s | 0; p.w = String(m.w || '').slice(0, 24); p.a = m.a ? 1 : 0; p.b = m.b ? 1 : 0; break;
       case 'shot': if (p.alive) { bcast({ t: 'shot', id: p.id, w: m.w, o: m.o, d: m.d, q: m.q ? 1 : 0 }, p); hearShot(p, !!m.q); } break;
-      case 'throw': if (p.alive) bcast({ t: 'throw', id: p.id, k: m.k, p: m.p, v: m.v }, p); break;
+      case 'throw': if (p.alive) bcast({ t: 'throw', id: p.id, k: m.k, p: m.p, v: m.v, f: +m.f || 0 }, p); break;
+      case 'flashbots': if (p.alive && Array.isArray(m.ids)) for (const id of m.ids.slice(0, 20)) { const b = players.get(id); if (b && b.bot) { b.bot.blindT = 3.5; b.bot.target = 0; } } break;
       case 'hit': { const v = players.get(m.id); if (!v || !p.alive || v === p) break; const dist = Math.hypot(v.pos[0] - p.pos[0], v.pos[2] - p.pos[2]);
         const dmg = Math.max(0, Math.min(260, +m.dmg || 0)); if (dist > 700) break;
         if (Array.isArray(m.pt) && Array.isArray(m.d)) bcast({ t: 'blood', p: m.pt, d: m.d, head: !!m.head }, p);
@@ -203,7 +205,7 @@ setInterval(() => {
   }
   if (G.phase === 'end' && now > G.endAt) { G = newRound(); for (const p of players.values()) { p.inGame = false; p.alive = false; } bcast({ t: 'reset', seed: G.seed, map: G.mapId }); bcast(lobbyMsg()); }
   if (G.phase !== 'lobby') {
-    const z = G.zone; const ps = []; for (const p of players.values()) if (p.inGame) ps.push([p.id, +p.pos[0].toFixed(2), +p.pos[1].toFixed(2), +p.pos[2].toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.s, p.w, p.alive ? 1 : 0, p.a, p.armor ? ARMOR[p.armor.k].lvl : 0]);
+    const z = G.zone; const ps = []; for (const p of players.values()) if (p.inGame) ps.push([p.id, +p.pos[0].toFixed(2), +p.pos[1].toFixed(2), +p.pos[2].toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.s, p.w, p.alive ? 1 : 0, p.a, p.armor ? ARMOR[p.armor.k].lvl : 0, p.b || 0]);
     bcast({ t: 'snap', ps, z: z && [+z.cx.toFixed(1), +z.cz.toFixed(1), +z.r.toFixed(1), +z.ncx.toFixed(1), +z.ncz.toFixed(1), z.nr, z.st, Math.max(0, Math.ceil(z.tl)), z.dps, z.ph], alive: ps.filter(x => x[8]).length });
   }
 }, 50);

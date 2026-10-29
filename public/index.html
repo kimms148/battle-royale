@@ -176,7 +176,7 @@ let terrain = null, water = null;
 const zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 400, 96, 1, true), new THREE.MeshBasicMaterial({ color: 0x3d8bff, transparent: true, opacity: .14, side: THREE.DoubleSide, depthWrite: false, fog: false })); zoneWall.position.y = 150; S.add(zoneWall);
 
 /* ---------- 맵 ---------- */
-const MATS = { brick: 0x8a4c3c, plaster: 0xb9ad97, metal: 0x707a80, roof: 0x4b403a, cont1: 0x2f5a7a, cont2: 0x8a3a2a, crate: 0x7a5f3a, sand: 0x9a8a62, barrier: 0xa8a49a, rubble: 0x6a645c, found: 0x5a5650 };
+const MATS = { brick: 0x8a4c3c, plaster: 0xb9ad97, metal: 0x707a80, roof: 0x6e625a, cont1: 0x2f5a7a, cont2: 0x8a3a2a, crate: 0x7a5f3a, sand: 0x9a8a62, barrier: 0xa8a49a, rubble: 0x6a645c, found: 0x5a5650, wood: 0x6b4f33, stair: 0x7d6b56, floor: 0x6e6458 };
 const mapG = new THREE.Group(); S.add(mapG);
 const hitables = [], solids = [];
 const bounds = { minX: -MAP.half + .8, maxX: MAP.half - .8, minZ: -MAP.half + .8, maxZ: MAP.half - .8 };
@@ -205,7 +205,7 @@ function buildMap(seed, mapId) {
       if (L.water && y < 0) t.setHex(0x2f6f8c); else t.copy(c1).lerp(c3, Math.min(1, y / 30)).multiplyScalar(Math.max(.45, Math.min(1.35, .85 - sh))); const o = (j * N + i) * 4; img.data[o] = t.r * 255; img.data[o + 1] = t.g * 255; img.data[o + 2] = t.b * 255; img.data[o + 3] = 255; }
     const tc = document.createElement('canvas'); tc.width = tc.height = N; tc.getContext('2d').putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(tc, 0, 0, 900, 900); }
   g.fillStyle = '#5c5a54'; for (const [x, z, s] of MAPD.rocks) { g.beginPath(); g.arc(X(x), X(z), Math.max(1.5, s * k), 0, 7); g.fill(); }
-  for (const [x, y, z, w, h, d, m] of MAPD.boxes) { if (m === 'roof' || m === 'found') continue; g.fillStyle = m === 'crate' ? '#8a6f45' : m.startsWith('cont') ? '#5f7f9a' : m === 'sand' ? '#b8a878' : m === 'barrier' ? '#d0ccc0' : '#d9d0bd'; g.fillRect(X(x - w / 2), X(z - d / 2), Math.max(1, w * k), Math.max(1, d * k)); }
+  for (const [x, y, z, w, h, d, m] of MAPD.boxes) { if (m === 'roof' || m === 'found' || m === 'floor') continue; g.fillStyle = m === 'crate' ? '#8a6f45' : m.startsWith('cont') ? '#5f7f9a' : m === 'sand' ? '#b8a878' : m === 'barrier' ? '#d0ccc0' : '#d9d0bd'; g.fillRect(X(x - w / 2), X(z - d / 2), Math.max(1, w * k), Math.max(1, d * k)); }
   g.font = '600 22px "IBM Plex Sans KR",sans-serif'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.shadowColor = '#000'; g.shadowBlur = 4; for (const [n, x, z] of MAPD.towns) g.fillText(n, X(x), X(z) - 50 * k);
 }
 // 고정 지형과의 탄 충돌 (상자 목록에 대한 광선 판정)
@@ -236,13 +236,20 @@ const fp = createFP({ scene: S, cam, canvas: cv, hitables, solids, bounds, groun
   invApi: { owned: (slot, w) => slot === 'optic' ? opticBag.filter(k => canMount(w, k)) : attBag.filter(k => attAllowed(w, slot).includes(k)), equip: (w, slot, k) => { if (slot === 'optic') { const i = opticBag.indexOf(k); if (i >= 0) opticBag.splice(i, 1); mountOptic(w, k); } else { const i = attBag.indexOf(k); if (i >= 0) attBag.splice(i, 1); const old = getAtts(w)[slot]; if (old) attBag.push(old); setAtt(w, slot, k); } renderBag(); sendInv(); }, unequip: (w, slot) => { if (slot === 'optic') { if (opticOn[w.k]) { opticBag.push(opticOn[w.k]); delete opticOn[w.k]; fp.setOptic(w, 'none'); } } else { const old = getAtts(w)[slot]; if (old) { attBag.push(old); setAtt(w, slot, null); } } renderBag(); sendInv(); } },
   onInvToggle: open => { $('brHud').style.visibility = open ? 'hidden' : ''; },
   invBag: () => { const a = opticBag.map(k => OPTICS[k].name).concat(attBag.map(k => ATT[k].name)); return a.length ? '가방: ' + a.join(', ') : '가방에 파츠가 없어요. 총에 맞는 파츠를 주우면 여기에 들어와요.'; },
-  onThrow: (k, p, v) => { net({ t: 'throw', k, p: v3(p), v: v3(v) }); sendInv(); },
+  onThrow: (k, p, v, f) => { net({ t: 'throw', k, p: v3(p), v: v3(v), f: +(+f || 0).toFixed(2) }); sendInv(); },
+  // 내 수류탄·섬광탄·불이 봇에게 주는 피해 (봇은 화면이 없어서 던진 사람이 대신 계산)
+  onBoom: (k, p) => { for (const r of remotes.values()) { if (!r.alive || !isBot(r.id)) continue; const d = Math.hypot(r.x - p.x, r.y + .9 - p.y, r.z - p.z); if (k === 'frag_west' && d < 7) net({ t: 'hit', id: r.id, dmg: Math.round(150 * (1 - d / 7)), head: false, w: 'frag_west' }); }
+    if (k === 'flashbang_west') { const ids = [...remotes.values()].filter(r => r.alive && isBot(r.id) && Math.hypot(r.x - p.x, r.z - p.z) < 18).map(r => r.id); if (ids.length) net({ t: 'flashbots', ids }); }
+    for (const d of dummies) if (d.alive && k === 'frag_west') { const dd = Math.hypot(d.av.position.x - p.x, d.av.position.z - p.z); if (dd < 7) { lastHitPt[d.id] = d.av.position.clone().setY(1.3); tnet({ t: 'hit', id: d.id, dmg: Math.round(150 * (1 - dd / 7)), head: false }); } } },
+  onFireTick: (p, r) => { for (const q of remotes.values()) if (q.alive && isBot(q.id) && Math.hypot(q.x - p.x, q.z - p.z) < r && Math.abs(q.y - p.y) < 1.6) net({ t: 'hit', id: q.id, dmg: 7, head: false, w: 'incendiary_east' });
+    for (const d of dummies) if (d.alive && Math.hypot(d.av.position.x - p.x, d.av.position.z - p.z) < r) { lastHitPt[d.id] = d.av.position.clone().setY(1); tnet({ t: 'hit', id: d.id, dmg: 7, head: false }); } },
   onHitPlayer: (id, dmg, head, wk, pt, d) => { lastHitPt[id] = pt && pt.clone(); net({ t: 'hit', id, dmg: Math.round(dmg), head, w: wk, pt: pt && v3(pt), d: d && v3(d) }); },
   selfDamage: (dmg, kind, owner) => { if (alive) net({ t: 'self', dmg, kind, by: owner || myId }); },
   onEmptyThrow: (slot, k) => { const next = ['frag_west', 'flashbang_west', 'smoke_west', 'incendiary_east'].find(t => fp.invOf(WK[t]).reserve > 0); fp.slots[3] = next || null; if (next) fp.equip(3); else fp.holster(); fp.renderSlots(); sendInv(); },
   onKey, onAction, onCycleThrow: () => cycleThrow(), onDeadLook: (dx) => { specYaw -= dx * .003; },
 });
 const lastHitPt = {};
+const isBot = id => !!(lastLobby && lastLobby.players.find(p => p.id === id && p.bot));
 const v3 = v => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
 
 /* ---------- 네트워크 ---------- */
@@ -273,7 +280,7 @@ function onMsg(m) {
     case 'begin': beginGame(m); break;
     case 'snap': onSnap(m); break;
     case 'shot': { const r = remotes.get(m.id); const w = WK[m.w]; if (!w) break; const o = new THREE.Vector3(...m.o); let mz = null; if (r && r.av && r.av.userData.gun) { mz = new THREE.Vector3(); r.av.userData.gunTip.getWorldPosition(mz); } fp.remoteShot(w, o, m.d.map(d => new THREE.Vector3(...d)), mz, !!m.q); if (r) r.flash = .05; break; }
-    case 'throw': fp.spawnThrown(m.k, new THREE.Vector3(...m.p), new THREE.Vector3(...m.v), false, m.id); break;
+    case 'throw': fp.spawnThrown(m.k, new THREE.Vector3(...m.p), new THREE.Vector3(...m.v), false, m.id, m.f); break;
     case 'hp': { const prev = myHp; myHp = m.hp; updHp(); if (m.hp < prev && !m.heal) { snd.hurt(); $('dmgv').style.transition = 'none'; $('dmgv').style.opacity = Math.min(1, (prev - m.hp) / 30 + .3); requestAnimationFrame(() => { $('dmgv').style.transition = 'opacity .8s'; $('dmgv').style.opacity = 0; }); fp.punchShake(.3);
         if (m.from) { const a = Math.atan2(m.from[0] - fp.P.pos.x, m.from[1] - fp.P.pos.z); const rel = a - (fp.P.yaw + Math.PI); $('hurt').style.transform = `rotate(${-rel}rad)`; $('hurt').style.transition = 'none'; $('hurt').style.opacity = 1; requestAnimationFrame(() => { $('hurt').style.transition = 'opacity 1.4s'; $('hurt').style.opacity = 0; }); } } break; }
     case 'dealt': dmgNum(lastHitPt[m.id], m.dmg, m.head); if (m.kill) { $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1200); } break;
@@ -440,6 +447,9 @@ function makeAvatar(id, name) {
   setAvGun(root, ''); S.add(root); return root;
 }
 const _Y3 = new THREE.Vector3(0, 1, 0);
+const flameTexAv = (() => { const c = document.createElement('canvas'); c.width = 32; c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(16, 48, 1, 16, 40, 30); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(.4, 'rgba(255,150,40,.8)'); gr.addColorStop(1, 'rgba(200,40,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 64); return new THREE.CanvasTexture(c); })();
+function avBurn(A, on) { const U = A.userData; if (!U.flames) { U.flames = new THREE.Group(); for (let i = 0; i < 5; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTexAv, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); sp.position.set((Math.random() - .5) * .4, .4 + i * .3, (Math.random() - .5) * .3); sp.scale.set(.5, .9, 1); U.flames.add(sp); } A.add(U.flames); }
+  U.flames.visible = !!on; if (on) { const t = performance.now() / 100; U.flames.children.forEach((sp, i) => { const f = .8 + .3 * Math.sin(t + i * 2); sp.scale.set(.45 * f, .9 * f, 1); }); } }
 function avSeg(m, a, b, r) { const d = b.clone().sub(a), L = d.length(); m.position.copy(a).addScaledVector(d, .5); m.quaternion.setFromUnitVectors(_Y3, d.normalize()); m.scale.set(r, L, r); }
 function avArm(A, hand) { const sh = new THREE.Vector3(A.side * .21, 0, 0); const el = sh.clone().lerp(hand, .5).add(new THREE.Vector3(A.side * .1, -.13, .05)); avSeg(A.up, sh, el, .055); avSeg(A.fo, el, hand, .045); A.hand.position.copy(hand); A.hand.quaternion.setFromUnitVectors(_Y3, el.clone().sub(hand).normalize()); }
 const rotH = v => new THREE.Vector3(v.z, v.y, -v.x); // 총 좌표 → 아바타 팔 좌표 (y축 90도 회전)
@@ -456,9 +466,9 @@ let zone = null;
 function onSnap(m) {
   const now = performance.now(); zone = m.z; $('aliveN').textContent = m.alive;
   const seen = new Set();
-  for (const a of m.ps) { const [id, x, y, z, yaw, pitch, s, w, al, ads, arm] = a; seen.add(id); if (id === myId) { if (!al && alive && phase === 'live') { /* 서버 기준 사망 */ } continue; }
+  for (const a of m.ps) { const [id, x, y, z, yaw, pitch, s, w, al, ads, arm, burn] = a; seen.add(id); if (id === myId) { if (!al && alive && phase === 'live') { /* 서버 기준 사망 */ } continue; }
     let r = remotes.get(id); if (!r) { const pl = lastLobby && lastLobby.players.find(p => p.id === id); r = { id, name: pl ? pl.name : '?', buf: [], alive: true, av: null, step: 0, flash: 0 }; remotes.set(id, r); }
-    r.buf.push({ t: now, x, y, z, yaw, pitch, s, w, ads, arm: arm || 0 }); if (r.buf.length > 30) r.buf.shift(); r.alive = !!al; }
+    r.buf.push({ t: now, x, y, z, yaw, pitch, s, w, ads, arm: arm || 0, burn: burn || 0 }); if (r.buf.length > 30) r.buf.shift(); r.alive = !!al; }
   for (const [id, r] of remotes) if (!seen.has(id)) { removeAvatar(r); remotes.delete(id); }
 }
 const _a = new THREE.Vector3();
@@ -467,7 +477,7 @@ function updRemotes(dt) { const rt = performance.now() - 110;
     const x = s0.x + (s1.x - s0.x) * u, y = s0.y + (s1.y - s0.y) * u, z = s0.z + (s1.z - s0.z) * u; let dy = s1.yaw - s0.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); const yaw = s0.yaw + dy * u, pitch = s0.pitch + (s1.pitch - s0.pitch) * u;
     if (!r.av) { const pl = lastLobby && lastLobby.players.find(p => p.id === r.id); if (pl) r.name = pl.name; r.av = makeAvatar(r.id, r.name); }
     const A = r.av, U = A.userData; const spd = r.lx !== undefined ? Math.hypot(x - r.lx, z - r.lz) / Math.max(dt, 1e-3) : 0; r.lx = x; r.lz = z; r.x = x; r.y = y; r.z = z; r.yaw = yaw; r.pitch = pitch;
-    A.position.set(x, y, z); A.rotation.y = yaw; setAvGun(A, s1.w); setVest(A, s1.arm);
+    A.position.set(x, y, z); A.rotation.y = yaw; setAvGun(A, s1.w); setVest(A, s1.arm); avBurn(A, s1.burn && r.alive);
     if (!r.alive) { U.body.rotation.x = Math.min(H, (U.body.rotation.x || 0) + dt * 4); U.body.position.y = .15; U.tag.visible = false; U.fl.visible = false; continue; }
     U.body.rotation.x = s1.s === 2 ? -H * .98 : 0; U.body.position.y = s1.s === 2 ? .2 : 0; U.body.position.z = s1.s === 2 ? .9 : 0; const cr = s1.s === 1; U.body.scale.y = 1; U.legL.scale.y = U.legR.scale.y = cr ? .55 : 1; U.upper.position.y = cr ? .55 : .92; U.legL.position.y = U.legR.position.y = cr ? .5 : .92;
     U.upper.rotation.x = 0; U.arms.rotation.x = s1.s === 2 ? H * .98 + pitch : pitch;
@@ -563,7 +573,7 @@ function loop() { requestAnimationFrame(loop); const dt = Math.min(.05, clock.ge
     findLoot(); $('pick').hidden = !nearLoot; if (nearLoot) { const u = nearLoot.userData; $('pickT').textContent = itemName(u.type, u.k, u.n) + ' 줍기'; }
     updZoneUi(); drawMap(miniCtx, 340, false); if (mapHeld) drawMap(bigCtx, 900, true);
     { const cx = cam.position.x, cz = cam.position.z, tt = performance.now() / 300; lootG.children.forEach(g => { const d = Math.abs(g.position.x - cx) + Math.abs(g.position.z - cz); g.visible = d < 90; if (g.visible) g.children[1].material.opacity = .35 + Math.sin(tt + g.userData.id) * .2; }); }
-    sendT -= dt; if (alive && sendT <= 0) { sendT = .05; const P = fp.P; net({ t: 'st', p: [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2)], y: +P.yaw.toFixed(3), pi: +P.pitch.toFixed(3), s: P.stance === 'crouch' ? 1 : P.stance === 'prone' ? 2 : 0, w: fp.ws ? fp.ws.w.k : fp.knifeOut ? 'knife' : '', a: fp.adsT > .5 ? 1 : 0 }); }
+    sendT -= dt; if (alive && sendT <= 0) { sendT = .05; const P = fp.P; net({ t: 'st', p: [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2)], y: +P.yaw.toFixed(3), pi: +P.pitch.toFixed(3), s: P.stance === 'crouch' ? 1 : P.stance === 'prone' ? 2 : 0, w: fp.ws ? fp.ws.w.k : fp.knifeOut ? 'knife' : '', a: fp.adsT > .5 ? 1 : 0, b: fp.burning ? 1 : 0 }); }
   }
   R.render(S, cam); }
 connect(); loop();
