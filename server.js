@@ -4,12 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
-import { genMap, spawnPoint, rng, MAP, MAPS, MAP_IDS, ZONE, AMMO_PACK, MEDS, ARMOR, armorHit, losBlocked, mapAabbs, ZONE_MUL, falloff } from './public/mapgen.js';
+import { genMap, spawnPoint, rng, MAP, MAPS, MAP_IDS, ZONE, AMMO_PACK, MEDS, ARMOR, armorHit, losBlocked, mapAabbs, makeGrid, ZONE_MUL, falloff } from './public/mapgen.js';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const PORT = +process.env.PORT || 3000;
 const THREE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', 'three');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.css': 'text/css' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.css': 'text/css', '.glb': 'model/gltf-binary' };
 
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
@@ -45,7 +45,7 @@ function addLoot(type, k, n, x, y, z) { const id = G.lootId++; const it = { id, 
 const L = it => [it.id, it.type, it.k, it.n, it.x, it.y, it.z];
 
 function begin() {
-  if (CFG.map !== 'random') G.mapId = CFG.map; G.map = genMap(G.seed, G.mapId); G.aabbs = mapAabbs(G.map); const R = rng(G.seed ^ 0x5bd1e995);
+  if (CFG.map !== 'random') G.mapId = CFG.map; G.map = genMap(G.seed, G.mapId); G.aabbs = mapAabbs(G.map); G.grid = makeGrid(G.aabbs, q => [q[0], q[2], q[3], q[5]]); const R = rng(G.seed ^ 0x5bd1e995);
   for (const [x, y, z] of G.map.loot) {
     const roll = R(); const jx = () => x + (R() - .5) * 1.2, jz = () => z + (R() - .5) * 1.2;
     if (roll < .3) { const g = pickW(R, GUNS); addLoot('gun', g[0], 1, x, y, z); addLoot('ammo', g[1], AMMO_PACK[g[1]], jx(), y, jz()); }
@@ -118,16 +118,18 @@ function addBots(R) { const n = CFG.bots; const used = new Set();
     players.set(p.id, p); } }
 const EYE = 1.55;
 function eyeOf(p) { return [p.pos[0], p.pos[1] + (p.s === 1 ? 1.05 : EYE), p.pos[2]]; }
-function canSee(a, b) { return !losBlocked(G.map, eyeOf(a), [b.pos[0], b.pos[1] + 1.3, b.pos[2]], G.aabbs); }
-function blockedAt(x, y, z) { for (const q of G.aabbs) if (x > q[0] - .35 && x < q[3] + .35 && z > q[2] - .35 && z < q[5] + .35 && y + 1.6 > q[1] && y + .45 < q[4]) return true; return false; }
+function canSee(a, b) { return !losBlocked(G.map, eyeOf(a), [b.pos[0], b.pos[1] + 1.3, b.pos[2]], null, G.grid); }
+const _nb = [];
+function blockedAt(x, y, z) { for (const q of G.grid.near(x - 1, z - 1, x + 1, z + 1, _nb)) if (x > q[0] - .35 && x < q[3] + .35 && z > q[2] - .35 && z < q[5] + .35 && y + 1.6 > q[1] && y + .45 < q[4]) return true; return false; }
 function hearShot(p, quiet) { for (const b of players.values()) if (b.bot && b.alive && b !== p) { const d = Math.hypot(b.pos[0] - p.pos[0], b.pos[2] - p.pos[2]); if (d < (quiet ? 30 : 110)) { if (!b.bot.target) { b.bot.wp = [p.pos[0] + (Math.random() - .5) * 20, p.pos[2] + (Math.random() - .5) * 20]; b.bot.wpT = 12; } } } }
 function tickBots(dt) { const z = G.zone; const all = [...players.values()].filter(p => p.inGame && p.alive);
   for (const p of all) { const pp = p._pp || p.pos; p.vel = p.vel === undefined ? 0 : p.vel * .8 + Math.hypot(p.pos[0] - pp[0], p.pos[2] - pp[2]) / Math.max(dt, .01) * .2; p._pp = p.pos.slice(); }
   for (const p of all) { if (!p.bot) continue; const B = p.bot, gun = B.gun, D = B.D; B.cd -= dt; B.think -= dt; B.reload -= dt; B.alertT -= dt; B.strafeT -= dt; B.rest -= dt; B.combatT -= dt;
     // 1) 목표 찾기 (0.3초마다)
     B.blindT = (B.blindT || 0) - dt; if (B.blindT > 0) { B.target = 0; B.think = .3; }
-    if (B.think <= 0) { B.think = .3; let best = null, bd = 1e9;
-      for (const q of all) { if (q === p) continue; const d = Math.hypot(q.pos[0] - p.pos[0], q.pos[2] - p.pos[2]); if (d > D.view * (gun.cls === 'SR' || gun.cls === 'DMR' ? 1.4 : 1)) continue; const pri = d - (q.id === B.lastHit ? 60 : 0) - (q.bot ? 0 : 10); if (pri < bd && canSee(p, q)) { bd = pri; best = q; } }
+    if (B.think <= 0) { B.think = .4 + Math.random() * .15; let best = null; const view = D.view * (gun.cls === 'SR' || gun.cls === 'DMR' ? 1.4 : 1);
+      const cand = []; for (const q of all) { if (q === p) continue; const d = Math.hypot(q.pos[0] - p.pos[0], q.pos[2] - p.pos[2]); if (d <= view) cand.push([d - (q.id === B.lastHit ? 60 : 0) - (q.bot ? 0 : 10), q]); }
+      cand.sort((x, y) => x[0] - y[0]); for (let ci = 0; ci < Math.min(4, cand.length); ci++) if (canSee(p, cand[ci][1])) { best = cand[ci][1]; break; }
       if (best) { if (B.target !== best.id) { B.target = best.id; B.seenT = 0; } B.combatT = 4; } else { if (B.target) { const t = players.get(B.target); if (t && t.alive) { B.wp = [t.pos[0], t.pos[2]]; B.wpT = 8; } } B.target = 0; if (B.lastHit && B.alertT > 0) { const t = players.get(B.lastHit); if (t && t.alive) { B.wp = [t.pos[0], t.pos[2]]; B.wpT = 6; } } } }
     const T = B.target ? players.get(B.target) : null; if (T && !T.alive) B.target = 0;
     // 2) 이동 목표
@@ -197,8 +199,9 @@ wss.on('connection', ws => {
 });
 
 let last = Date.now(), dmgAcc = 0;
+let tickMs = 0, tickN = 0; setInterval(() => { if (tickN) console.log(`[서버] 평균 틱 ${(tickMs / tickN).toFixed(2)}ms`); tickMs = 0; tickN = 0; }, 60000);
 setInterval(() => {
-  const now = Date.now(), dt = (now - last) / 1000; last = now;
+  const now = Date.now(), dt = Math.min(.2, (now - last) / 1000); last = now; const t0 = performance.now();
   if (G.phase === 'live') {
     tickZone(dt); tickBots(dt); dmgAcc += dt;
     if (dmgAcc >= 1) { dmgAcc -= 1; const z = G.zone; for (const p of players.values()) if (p.alive && z.dps > 0 && Math.hypot(p.pos[0] - z.cx, p.pos[2] - z.cz) > z.r) damage(p, z.dps, 0, 'zone', false); }
@@ -206,6 +209,7 @@ setInterval(() => {
   if (G.phase === 'end' && now > G.endAt) { G = newRound(); for (const p of players.values()) { p.inGame = false; p.alive = false; } bcast({ t: 'reset', seed: G.seed, map: G.mapId }); bcast(lobbyMsg()); }
   if (G.phase !== 'lobby') {
     const z = G.zone; const ps = []; for (const p of players.values()) if (p.inGame) ps.push([p.id, +p.pos[0].toFixed(2), +p.pos[1].toFixed(2), +p.pos[2].toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.s, p.w, p.alive ? 1 : 0, p.a, p.armor ? ARMOR[p.armor.k].lvl : 0, p.b || 0]);
+    tickMs += performance.now() - t0; tickN++;
     bcast({ t: 'snap', ps, z: z && [+z.cx.toFixed(1), +z.cz.toFixed(1), +z.r.toFixed(1), +z.ncx.toFixed(1), +z.ncz.toFixed(1), z.nr, z.st, Math.max(0, Math.ceil(z.tl)), z.dps, z.ph], alive: ps.filter(x => x[8]).length });
   }
 }, 50);

@@ -67,3 +67,5 @@ public/models/     총 3D 모델 (Poly Pizza, CC0 / CC-BY 3.0)
 
 모델 출처(CC-BY는 표기 필요): J-Toastie, Dark, austincford, Kyler Swanson, AdamKokrito,
 PuKkBuMXDD, Quaternius (CC0/CC-BY), Pichuliru (CC0) — poly.pizza
+
+사람 모델: three.js 예제 Soldier.glb (Mixamo 리그·애니메이션, three.js 저장소 MIT 예제 자산)

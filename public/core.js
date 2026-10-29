@@ -245,8 +245,11 @@ export function attachOptic(model, w, key) {
 
 /* ---------- 사운드 ---------- */
 let actx = null; export function ac() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} return actx; }
-function noise(len, lp, gain, decay) { const a = ac(); if (!a || gain < .003) return; const t = a.currentTime, n = a.createBufferSource(), b = a.createBuffer(1, Math.max(1, a.sampleRate * len), a.sampleRate), d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, decay); n.buffer = b; const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; const g = a.createGain(); g.gain.value = gain; n.connect(f).connect(g).connect(a.destination); n.start(t); }
+// 잡음 소리: 같은 길이·감쇠는 한 번 만든 버퍼를 다시 씀 (총소리가 많을 때 렉 방지). 동시에 너무 많이 울리면 작은 소리는 건너뜀
+const noiseBufs = new Map(); let nActive = 0;
+function noise(len, lp, gain, decay) { const a = ac(); if (!a || gain < .003) return; if (nActive > 24 && gain < .3) return; const key = Math.round(len * 100) + ':' + Math.round(decay * 10); let b = noiseBufs.get(key);
+  if (!b) { b = a.createBuffer(1, Math.max(1, a.sampleRate * len), a.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, decay); noiseBufs.set(key, b); }
+  const t = a.currentTime, n = a.createBufferSource(); n.buffer = b; n.playbackRate.value = .94 + Math.random() * .12; nActive++; n.onended = () => nActive--; const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; const g = a.createGain(); g.gain.value = gain; n.connect(f).connect(g).connect(a.destination); n.start(t); }
 function tone(fr, len, gain, type = 'square') { const a = ac(); if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.type = type; o.frequency.value = fr; g.gain.setValueAtTime(gain, a.currentTime); g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + len); o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + len + .02); }
 export const snd = { shot: (w, vol = 1, far = 0) => noise(w.act === 'bolt' ? .6 : w.pel ? .5 : .32, (w.pistol ? 2600 : w.act === 'bolt' ? 1800 : 2200) * (1 - far * .8), .6 * vol, w.pistol ? 6 : 3.5), click: () => tone(2200, .04, .05), mag: () => { tone(700, .05, .06); noise(.08, 1800, .15, 6); }, bolt: () => { tone(420, .06, .08, 'sawtooth'); noise(.1, 2500, .15, 5); },
   ding: () => tone(1750, .35, .08, 'sine'), step: (v = 1) => noise(.07, 300, .12 * v, 4), boom: (v = 1) => noise(1.2, 700, .9 * v, 2), hit: () => tone(900, .08, .06, 'triangle'), hurt: () => noise(.15, 500, .3, 3), noise, tone };
@@ -287,7 +290,7 @@ export function createFP(o) {
   const puffTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const puffs = []; const chipGeo = new THREE.BoxGeometry(.025, .025, .025), chipMat = new THREE.MeshBasicMaterial({ color: 0xb89a70 }), chipMatT = new THREE.MeshBasicMaterial({ color: 0xffd27a }), dropGeo = new THREE.SphereGeometry(.014, 5, 4), dropMat = new THREE.MeshBasicMaterial({ color: 0x7a0606 }), decalGeo = new THREE.PlaneGeometry(1, 1);
   function puff(p, col, size, life, vel) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: col, transparent: true, depthWrite: false, opacity: .8 })); m.position.copy(p); m.scale.setScalar(size * .4); m.userData = { t: 0, life, size, v: vel || new THREE.Vector3(0, .3, 0) }; S2.add(m); puffs.push(m); }
-  function decal(p, n, mat, size) { const d = new THREE.Mesh(decalGeo, mat); d.scale.setScalar(size); d.position.copy(p).addScaledVector(n, .006); d.lookAt(d.position.clone().add(n)); d.rotateZ(Math.random() * 6.28); S2.add(d); decals.push(d); if (decals.length > 220) S2.remove(decals.shift()); return d; }
+  function decal(p, n, mat, size) { const d = new THREE.Mesh(decalGeo, mat); d.scale.setScalar(size); d.position.copy(p).addScaledVector(n, .01); d.lookAt(d.position.clone().add(n)); d.rotateZ(Math.random() * 6.28); S2.add(d); decals.push(d); if (decals.length > 220) S2.remove(decals.shift()); return d; }
   // 피: 튀는 방울 + 피 안개 + 뒤쪽 벽이나 바닥에 묻는 자국
   function blood(p, dir, head) { const n = head ? 18 : 12;
     for (let i = 0; i < n; i++) { const s = new THREE.Mesh(dropGeo, dropMat); s.scale.setScalar(.6 + Math.random() * 1.2); s.position.copy(p); s.userData = { v: dir.clone().multiplyScalar(1.5 + Math.random() * 2.5).add(new THREE.Vector3((Math.random() - .5) * 2.4, Math.random() * 1.8, (Math.random() - .5) * 2.4)), t: 0, blood: 1 }; S2.add(s); sparks.push(s); }
@@ -668,10 +671,11 @@ export function createFP(o) {
   const cr = el.cross ? [...el.cross.children] : [];
 
   /* ----- 이동 · 충돌 ----- */
-  function collide() { for (const b of solids) { const r = .32, top = P.pos.y + P.eye * .95; if (P.pos.y > b.max.y - .4 || top < b.min.y) continue;
+  const _near = [], near = (x, z, r) => o.solidsNear ? o.solidsNear(x - r, z - r, x + r, z + r, _near) : solids;
+  function collide() { for (const b of near(P.pos.x, P.pos.z, 1)) { const r = .32, top = P.pos.y + P.eye * .95; if (P.pos.y > b.max.y - .4 || top < b.min.y) continue;
     const cx = Math.max(b.min.x, Math.min(P.pos.x, b.max.x)), cz = Math.max(b.min.z, Math.min(P.pos.z, b.max.z)); const dx = P.pos.x - cx, dz = P.pos.z - cz, d = Math.hypot(dx, dz);
     if (d < r) { if (d > 1e-4) { P.pos.x = cx + dx / d * r; P.pos.z = cz + dz / d * r; } else P.pos.x = b.max.x + r; } } }
-  function groundY() { let g = o.groundAt ? o.groundAt(P.pos.x, P.pos.z) : 0; for (const b of solids) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .4) g = Math.max(g, b.max.y); } return g; }
+  function groundY() { let g = o.groundAt ? o.groundAt(P.pos.x, P.pos.z) : 0; for (const b of near(P.pos.x, P.pos.z, 1)) { if (P.pos.x > b.min.x - .2 && P.pos.x < b.max.x + .2 && P.pos.z > b.min.z - .2 && P.pos.z < b.max.z + .2 && P.pos.y >= b.max.y - .4) g = Math.max(g, b.max.y); } return g; }
 
   /* ----- 매 프레임 ----- */
   function update(dt) {
@@ -750,7 +754,7 @@ export function createFP(o) {
     casings.forEach(c => { const u = c.userData; u.t += dt; const cg = (u.gy ??= o.groundAt ? o.groundAt(c.position.x, c.position.z) : 0); if (c.position.y > cg + .02) { u.v.y -= 9.8 * dt; c.position.addScaledVector(u.v, dt); c.rotation.x += u.s.x * dt; c.rotation.y += u.s.y * dt; } else { c.position.y = cg + .02; if (!u.land) { u.land = 1; snd.tone(4200 + Math.random() * 800, .05, .015, 'sine'); } } });
     targets.forEach(t => { const u = t.userData; u.av -= u.ang * 40 * dt; u.av *= Math.pow(.15, dt); u.ang += u.av * dt; t.rotation.x = -u.ang * .6; });
     thrown.forEach(c => { const u = c.userData; u.t += dt; u.v.y -= 9.8 * dt; const prev = c.position.clone(); const sp0 = u.v.length(); c.position.addScaledVector(u.v, dt); c.rotation.x += u.spin.x * dt * Math.min(1, sp0 / 6); c.rotation.y += u.spin.y * dt * Math.min(1, sp0 / 6);
-      for (const b of solids) { const q = c.position; if (q.x > b.min.x - .05 && q.x < b.max.x + .05 && q.y > b.min.y - .05 && q.y < b.max.y + .05 && q.z > b.min.z - .05 && q.z < b.max.z + .05) {
+      for (const b of near(c.position.x, c.position.z, 1)) { const q = c.position; if (q.x > b.min.x - .05 && q.x < b.max.x + .05 && q.y > b.min.y - .05 && q.y < b.max.y + .05 && q.z > b.min.z - .05 && q.z < b.max.z + .05) {
         const inX = prev.x <= b.min.x - .05 || prev.x >= b.max.x + .05, inY = prev.y <= b.min.y - .05 || prev.y >= b.max.y + .05;
         if (inY) { u.v.y *= -.3; u.v.x *= .5; u.v.z *= .5; } else if (inX) u.v.x *= -.4; else u.v.z *= -.4; c.position.copy(prev); if (u.k === 'incendiary_east') u.t = 99; else if (sp0 > 2) bounceSnd(c, sp0); break; } }
       const gy = o.groundAt ? o.groundAt(c.position.x, c.position.z) : 0;
@@ -767,7 +771,7 @@ export function createFP(o) {
     for (let i = booms.length - 1; i >= 0; i--) if (booms[i].userData.t > booms[i].userData.life) { S2.remove(booms[i]); booms.splice(i, 1); }
   }
   function setEnabled(v) { enabled = v; vmRoot.visible = v; if (!v) { fireHeld = false; ads = false; } }
-  return { get burning() { return burnT > 0 }, get knifeOut() { return knifeOut }, get sliding() { return slideT > 0 }, toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
+  return { get burning() { return burnT > 0 }, get knifeOut() { return knifeOut }, get sliding() { return slideT > 0 }, toggleInv, get invOpen() { return invOpen }, renderInv, magOf, get firing() { return fireHeld }, get locked() { return locked }, update, blood, equip, setOptic, setEnabled, P, slots, invOf, reserveOf, renderSlots, updHud, remoteShot, spawnThrown, boom, setState, startReload, holster, keys, vm, vmRoot, get cur() { return cur }, get ws() { return ws }, get adsT() { return adsT }, get curSlot() { return curSlot }, setAds: v => { ads = v }, fire: () => { fireHeld = true; tryFire(true); }, stopFire: () => { fireHeld = false; }, punchShake: v => { shake += v; } };
 }
 
 /* ---------- HUD (사격장·배틀로얄 공용) ---------- */
