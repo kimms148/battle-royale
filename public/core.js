@@ -208,23 +208,47 @@ const optMat = new THREE.MeshStandardMaterial({ color: 0x1d1f1e, roughness: .45,
 const lensMat = new THREE.MeshStandardMaterial({ color: 0x3b6a8a, roughness: .05, metalness: .2, transparent: true, opacity: .35, depthWrite: false });
 const redMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
 const optTubeMat = new THREE.MeshStandardMaterial({ color: 0x1d1f1e, roughness: .45, metalness: .6, side: THREE.DoubleSide });
-const dotGlassMat = new THREE.MeshBasicMaterial({ color: 0xffb070, transparent: true, opacity: .08, depthWrite: false, side: THREE.DoubleSide });
+const dotGlassMat = new THREE.MeshStandardMaterial({ color: 0xff8a40, emissive: 0x301000, roughness: .05, metalness: .5, transparent: true, opacity: .14, depthWrite: false, side: THREE.DoubleSide }); // 앞 렌즈: 붉은 코팅
+const rearGlassMat = new THREE.MeshStandardMaterial({ color: 0x6aa0c8, roughness: .05, metalness: .3, transparent: true, opacity: .07, depthWrite: false, side: THREE.DoubleSide });
+const holoGlassMat = new THREE.MeshStandardMaterial({ color: 0x7ac0e0, emissive: 0x041018, roughness: .04, metalness: .4, transparent: true, opacity: .13, depthWrite: false, side: THREE.DoubleSide });
+const rubberMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: .95 }), optEdgeMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3c, roughness: .35, metalness: .8 });
 function cyl(r1, r2, len, mat) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, 20, 1, mat === lensMat), mat); m.rotation.z = H; m.castShadow = true; return m; }
 export function buildOptic(key) {
   const o = OPTICS[key]; const g = new THREE.Group(); if (!o || key === 'none') return g;
   const mount = new THREE.Mesh(new THREE.BoxGeometry(o.len * .8, .012, .026), optMat); mount.position.y = .006; g.add(mount);
   if (o.type === 'dot') {
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(.019, .019, o.len, 24, 1, true), optTubeMat); tube.rotation.z = H; tube.position.y = o.h; g.add(tube);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(.0185, .0025, 8, 24), optMat); rim.rotation.y = H; rim.position.set(o.len / 2, o.h, 0); g.add(rim);
-    const rim2 = rim.clone(); rim2.position.x = -o.len / 2; g.add(rim2);
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(.017, 24), dotGlassMat); glass.rotation.y = H; glass.position.set(o.len / 2 - .002, o.h, 0); g.add(glass);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(o.len * .5, o.h - .01, .02), optMat); leg.position.y = (o.h) / 2; g.add(leg);
-    const knob = cyl(.006, .006, .012, optMat); knob.rotation.set(H, 0, 0); knob.position.set(0, o.h, .022); g.add(knob);
+    // 튜브형 레드닷: 몸통 튜브 + 앞쪽 후드 + 고무 링 + 위·오른쪽 다이얼 + 레일 마운트(가로 볼트·너트)
+    const R0 = .019, L = o.len, Y = o.h;
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(R0, R0, L * .78, 28, 1, true), optTubeMat); tube.rotation.z = H; tube.position.set(-L * .06, Y, 0); g.add(tube);
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(R0 + .0025, R0 + .001, L * .22, 28, 1, true), optTubeMat); hood.rotation.z = H; hood.position.set(L * .39, Y, 0); g.add(hood);
+    for (const [x, r, t] of [[L / 2, R0 + .002, .0028], [-L * .45, R0 + .0015, .004], [L * .26, R0 + .0012, .0018], [-L * .2, R0 + .0008, .0014]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(r, t, 8, 28), x < -L * .4 ? rubberMat : optMat); ring.rotation.y = H; ring.position.set(x, Y, 0); g.add(ring); }
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(R0 - .001, 28), dotGlassMat); glass.rotation.y = H; glass.position.set(L * .3, Y, 0); g.add(glass);
+    const glass2 = new THREE.Mesh(new THREE.CircleGeometry(R0 - .001, 28), rearGlassMat); glass2.rotation.y = H; glass2.position.set(-L * .4, Y, 0); g.add(glass2);
+    // 다이얼: 위(상하), 오른쪽(밝기) — 톱니 무늬
+    const dial = (r, h, rot, pos, teeth) => { const d = new THREE.Group(); const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 18), optMat); d.add(c); const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * .7, r * .7, .0015, 14), optEdgeMat); cap.position.y = h / 2; d.add(cap);
+      for (let k = 0; k < teeth; k++) { const a = k / teeth * Math.PI * 2; const t = new THREE.Mesh(new THREE.BoxGeometry(.0012, h * .9, .0016), optMat); t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); t.rotation.y = -a; d.add(t); } d.rotation.set(...rot); d.position.copy(pos); g.add(d); };
+    dial(.0075, .009, [0, 0, 0], new THREE.Vector3(-L * .04, Y + R0 + .004, 0), 14); dial(.0085, .009, [H, 0, 0], new THREE.Vector3(-L * .04, Y, R0 + .004), 16);
+    const boss = new THREE.Mesh(new THREE.BoxGeometry(L * .3, .008, .008), optMat); boss.position.set(-L * .04, Y + R0 - .002, 0); g.add(boss); const boss2 = boss.clone(); boss2.rotation.x = H; boss2.position.set(-L * .04, Y, R0 - .002); g.add(boss2);
+    // 받침과 마운트
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(L * .55, Y - R0 * .6, .022), optMat); riser.position.set(-L * .04, (Y - R0 * .6) / 2 + .006, 0); g.add(riser);
+    const clamp = new THREE.Mesh(new THREE.BoxGeometry(L * .5, .01, .032), optMat); clamp.position.set(-L * .04, .006, 0); g.add(clamp);
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(.0028, .0028, .04, 10), optEdgeMat); bolt.rotation.x = H; bolt.position.set(-L * .04, .008, 0); g.add(bolt);
+    const nut = new THREE.Mesh(new THREE.CylinderGeometry(.0055, .0055, .005, 6), optEdgeMat); nut.rotation.x = H; nut.position.set(-L * .04, .008, .019); g.add(nut);
   } else if (o.type === 'holo') {
-    const base = new THREE.Mesh(new THREE.BoxGeometry(o.len, .022, .036), optMat); base.position.y = .02; g.add(base);
-    for (const s of [-1, 1]) { const side = new THREE.Mesh(new THREE.BoxGeometry(.012, .046, .005), optMat); side.position.set(o.len / 2 - .01, o.h, s * .019); g.add(side); }
-    const top = new THREE.Mesh(new THREE.BoxGeometry(.012, .005, .043), optMat); top.position.set(o.len / 2 - .01, o.h + .023, 0); g.add(top);
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(.036, .04), lensMat); glass.rotation.y = H; glass.position.set(o.len / 2 - .01, o.h, 0); g.add(glass);
+    // 홀로그램: 배터리 몸통 + 창 둘레 후드 + 앞·뒤 유리 + 뒤쪽 버튼 + 옆 레버
+    const L = o.len, Y = o.h;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(L, .024, .036), optMat); base.position.y = .02; g.add(base);
+    const bat = new THREE.Mesh(new THREE.CylinderGeometry(.009, .009, .04, 14), optMat); bat.rotation.x = H; bat.position.set(L * .3, .02, 0); g.add(bat);
+    const batCap = new THREE.Mesh(new THREE.CylinderGeometry(.01, .01, .005, 14), optEdgeMat); batCap.rotation.x = H; batCap.position.set(L * .3, .02, .021); g.add(batCap);
+    const win = L * .55, wx = L * .18;
+    for (const sd of [-1, 1]) { const side = new THREE.Mesh(new THREE.BoxGeometry(win, .044, .005), optMat); side.position.set(wx, Y - .002, sd * .0195); g.add(side); const chamf = new THREE.Mesh(new THREE.BoxGeometry(win, .006, .008), optMat); chamf.position.set(wx, Y - .022, sd * .016); g.add(chamf); }
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(.0215, .0215, win, 20, 1, true, 0, Math.PI), optTubeMat); top.rotation.z = H; top.position.set(wx, Y + .004, 0); top.scale.set(1, 1, .95); g.add(top);
+    const fg = new THREE.Mesh(new THREE.PlaneGeometry(.035, .042), holoGlassMat); fg.rotation.y = H; fg.position.set(wx + win / 2 - .004, Y, 0); g.add(fg);
+    const rg = new THREE.Mesh(new THREE.PlaneGeometry(.035, .04), rearGlassMat); rg.rotation.y = H; rg.position.set(wx - win / 2 + .004, Y, 0); g.add(rg);
+    for (const [y, z] of [[.026, -.008], [.026, .008]]) { const bt = new THREE.Mesh(new THREE.BoxGeometry(.004, .006, .009), rubberMat); bt.position.set(-L / 2 - .001, y, z); g.add(bt); }
+    const nv = new THREE.Mesh(new THREE.BoxGeometry(.008, .006, .003), rubberMat); nv.position.set(-L * .25, .026, -.0185); g.add(nv);
+    const lever = new THREE.Mesh(new THREE.BoxGeometry(.022, .006, .004), optEdgeMat); lever.position.set(-L * .1, .012, .021); lever.rotation.z = .15; g.add(lever);
+    const pivot = new THREE.Mesh(new THREE.CylinderGeometry(.004, .004, .006, 10), optEdgeMat); pivot.rotation.x = H; pivot.position.set(-L * .2, .012, .021); g.add(pivot);
   } else {
     const tube = cyl(o.r, o.r, o.len * .7, optMat); tube.position.y = o.h; g.add(tube);
     const obj = cyl(o.r * 1.45, o.r, o.len * .22, optMat); obj.position.set(o.len * .42, o.h, 0); g.add(obj);
@@ -260,7 +284,7 @@ export function createFP(o) {
   // o: {scene, cam, hitables, solids, targets, bounds, el, slots, onHitPlayer, onShot, onThrow, onBoomSelf, onPick, canControl, startAmmo}
   const S2 = o.scene, cam2 = o.cam, hitables = o.hitables, solids = o.solids, targets = o.targets || [];
   const $ = id => document.getElementById(id);
-  const el = { fp: $('fp'), start: $('start'), scope: $('scope'), cross: $('cross'), hitm: $('hitm'), dist: $('dist'), state: $('stateTxt'), breath: $('breath'), breathI: $('breathI'), stance: $('stanceTxt'), ammoN: $('ammoN'), ammoR: $('ammoR'), mode: $('modeTxt'), slots: $('slotsEl'), strip: $('strip'), flash: $('flashbang'), dotRet: $('dotRet'), zoomTxt: $('zoomTxt'), thrUi: $('thrUi'), thrBar: $('thrBar'), thrTxt: $('thrTxt'), fuses: $('fuses'), burn: $('burnv') };
+  const el = { fp: $('fp'), start: $('start'), scope: $('scope'), cross: $('cross'), hitm: $('hitm'), dist: $('dist'), state: $('stateTxt'), breath: $('breath'), breathI: $('breathI'), stam: $('stam'), stamI: $('stamI'), stance: $('stanceTxt'), ammoN: $('ammoN'), ammoR: $('ammoR'), mode: $('modeTxt'), slots: $('slotsEl'), strip: $('strip'), flash: $('flashbang'), dotRet: $('dotRet'), zoomTxt: $('zoomTxt'), thrUi: $('thrUi'), thrBar: $('thrBar'), thrTxt: $('thrTxt'), fuses: $('fuses'), burn: $('burnv') };
   const vmRoot = new THREE.Group(); cam2.add(vmRoot); const vm = new THREE.Group(); vmRoot.add(vm);
   const flashTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(.3, 'rgba(255,170,60,.9)'); gr.addColorStop(1, 'rgba(255,90,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const FLASH = new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
@@ -272,7 +296,7 @@ export function createFP(o) {
   const magOf = w => w.mag + (attFx(w).mag || 0), rtOf = w => w.rt * attFx(w).rt;
   function reserveOf(w) { return ammoPool && !w.thr ? (ammoPool[w.cal] || 0) : invOf(w).reserve; }
   function takeReserve(w, n) { if (ammoPool && !w.thr) { const t = Math.min(n, ammoPool[w.cal] || 0); ammoPool[w.cal] = (ammoPool[w.cal] || 0) - t; return t; } const v = invOf(w); const t = Math.min(n, v.reserve); v.reserve -= t; return t; }
-  const P = { pos: new THREE.Vector3().copy(o.spawn || new THREE.Vector3(0, 0, 6)), vel: new THREE.Vector3(), yaw: 0, pitch: 0, stance: 'stand', eye: 1.65, onG: true, lean: 0, breath: 1, stepT: 0, bob: 0, sprinting: false, holding: false, dead: false };
+  const P = { pos: new THREE.Vector3().copy(o.spawn || new THREE.Vector3(0, 0, 6)), vel: new THREE.Vector3(), yaw: 0, pitch: 0, stance: 'stand', eye: 1.65, onG: true, lean: 0, breath: 1, stam: 1, tired: false, stamCd: 0, stepT: 0, bob: 0, sprinting: false, holding: false, dead: false };
   let cur = null, curSlot = -1, ws = null, locked = false, dragLook = null, keys = {}, fireHeld = false, ads = false, adsHoldStart = 0, adsT = 0, hipT = 1, recPool = 0, recAcc = 0, lastShot = -9, shotIdx = 0, bloom = 0, kick = 0, kickR = 0, shake = 0, flashT = 0, swayX = 0, swayY = 0, mdx = 0, mdy = 0, burstLeft = 0, blow = 0, enabled = false, hitmT = 0, stateT = 0, blind = 0;
   const bullets = [], decals = [], sparks = [], casings = [], thrown = [], booms = [];
   function bounceSnd(c, sp) { const d = c.position.distanceTo(cam2.position); if (d < 40) snd.tone(1400 + Math.random() * 600, .04, .05 * Math.min(1, sp / 8) * (1 - d / 40), 'square'); }
@@ -313,21 +337,58 @@ export function createFP(o) {
   function setOptic(w, key) { optSel[w.k] = key; const m = cache[w.k]; if (m) attachOptic(m, w, key); updHud(); }
 
   /* ----- 1인칭 팔과 손 ----- */
-  const sleeveM = new THREE.MeshStandardMaterial({ color: 0x4d5a3b, roughness: .92 }), gloveM = new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: .85 }), skinM = new THREE.MeshStandardMaterial({ color: 0xc69873, roughness: .7 });
-  const segGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
-  function makeArm(side) { const g = new THREE.Group(); const up = new THREE.Mesh(segGeo, sleeveM), fo = new THREE.Mesh(segGeo, sleeveM), wrist = new THREE.Mesh(segGeo, skinM);
-    const hand = new THREE.Group(); const palm = new THREE.Mesh(new THREE.BoxGeometry(.038, .072, .068), gloveM); hand.add(palm); const fing = new THREE.Mesh(new THREE.BoxGeometry(.024, .06, .064), gloveM); fing.position.set(side * -.021, -.01, -.006); hand.add(fing); const thumb = new THREE.Mesh(new THREE.BoxGeometry(.016, .016, .04), gloveM); thumb.position.set(side * .016, .024, -.028); hand.add(thumb);
-    g.add(up, fo, wrist, hand); [up, fo, wrist, palm, fing, thumb].forEach(m => { m.frustumCulled = false; m.renderOrder = 1; }); vmRoot.add(g); return { g, up, fo, wrist, hand, side, fing }; }
+  // 1인칭 팔: 3인칭 사람 모델과 같은 차림 (어두운 국방색 전투복 + 베이지 보호대 + 검은 장갑)
+  const fabTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#8a8a8a'; g.fillRect(0, 0, 64, 64); for (let i = 0; i < 500; i++) { const v = 110 + Math.random() * 60 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * 64, Math.random() * 64, 1 + Math.random() * 2, 1); } for (let y = 0; y < 64; y += 4) { g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(0, y, 64, 1); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const sleeveM = new THREE.MeshStandardMaterial({ color: 0x4a4e40, map: fabTex, roughness: .95 }), gloveM = new THREE.MeshStandardMaterial({ color: 0x1d1d1b, roughness: .7 }), skinM = gloveM,
+    plateM = new THREE.MeshStandardMaterial({ color: 0xa48d68, roughness: .6, metalness: .05 }), plateDk = new THREE.MeshStandardMaterial({ color: 0x6f604a, roughness: .7 });
+  const segGeo = new THREE.CylinderGeometry(1, 1, 1, 12);
+  const padGeo = new THREE.CylinderGeometry(1.32, 1.22, .62, 14, 1, true, -1.9, 3.8), bracGeo = new THREE.CylinderGeometry(1.28, 1.14, .5, 14, 1, false, -2.1, 4.2), cuffGeo = new THREE.CylinderGeometry(1.35, 1.25, .9, 12);
+  function makeArm(side) { const g = new THREE.Group(); const up = new THREE.Mesh(segGeo, sleeveM), fo = new THREE.Mesh(segGeo, sleeveM), wrist = new THREE.Mesh(segGeo, gloveM);
+    const pad = new THREE.Mesh(padGeo, plateM); pad.position.y = -.12; pad.rotation.y = side > 0 ? -H : H; up.add(pad); const strap = new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.06, .07, 12), plateDk); strap.position.y = .22; up.add(strap);
+    const brac = new THREE.Mesh(bracGeo, plateM); brac.position.y = .2; brac.rotation.y = side > 0 ? -H : H; fo.add(brac); const bs = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, .06, 12), plateDk); bs.position.y = -.05; fo.add(bs);
+    const cuff = new THREE.Mesh(cuffGeo, gloveM); wrist.add(cuff);
+    const elb = new THREE.Mesh(new THREE.SphereGeometry(.036, 12, 8, 0, Math.PI * 2, 0, 1.6), plateM); elb.scale.set(1, .7, 1);
+    const hand = new THREE.Group(); const palm = new THREE.Mesh(new THREE.BoxGeometry(.038, .07, .066), gloveM); hand.add(palm);
+    const knuck = new THREE.Mesh(new THREE.BoxGeometry(.012, .03, .056), plateDk); knuck.position.set(side * .02, -.022, -.002); hand.add(knuck);
+    const fing = new THREE.Group(); for (let k = 0; k < 4; k++) { const f = new THREE.Mesh(new THREE.BoxGeometry(.022, .058 - Math.abs(k - 1.5) * .006, .0145), gloveM); f.position.set(0, -(Math.abs(k - 1.5) * .003), -.024 + k * .016); fing.add(f); } fing.position.set(side * -.021, -.01, -.002); hand.add(fing);
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(.017, .017, .042), gloveM); thumb.position.set(side * .016, .024, -.028); thumb.rotation.x = -.2; hand.add(thumb);
+    g.add(up, fo, wrist, hand, elb); g.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.renderOrder = 1; } }); vmRoot.add(g); return { g, up, fo, wrist, hand, side, fing, elb }; }
   const AR = makeArm(1), AL = makeArm(-1);
   const _q = new THREE.Quaternion(), _Y = new THREE.Vector3(0, 1, 0);
   function seg(m, a, b, r0) { const d = b.clone().sub(a), L = d.length(); m.position.copy(a).addScaledVector(d, .5); m.quaternion.setFromUnitVectors(_Y, d.normalize()); m.scale.set(r0, Math.max(.001, L), r0); }
-  function poseArm(A, target, shoulder, fist) { const elbow = shoulder.clone().lerp(target, .52).add(new THREE.Vector3(A.side * .07, -.1, .02));
+  function poseArm(A, target, shoulder, fist, elb) { const elbow = elb ? elb.clone() : shoulder.clone().lerp(target, .52).add(new THREE.Vector3(A.side * .07, -.1, .02));
     const wristP = target.clone().lerp(elbow, .18);
-    seg(A.up, shoulder, elbow, .045); seg(A.fo, elbow, wristP, .034); seg(A.wrist, wristP.clone().lerp(target, .3), wristP, .024);
+    seg(A.up, shoulder, elbow, .047); seg(A.fo, elbow, wristP, .036); seg(A.wrist, wristP.clone().lerp(target, .3), wristP, .026); A.elb.position.copy(elbow); A.elb.quaternion.setFromUnitVectors(_Y, elbow.clone().sub(shoulder).normalize().add(wristP.clone().sub(elbow).normalize().negate()).normalize().negate());
     A.hand.position.copy(target); A.hand.quaternion.setFromUnitVectors(_Y, wristP.clone().sub(target).normalize()); A.hand.rotateY(A.side * .3); A.fing.scale.set(1, fist ? .6 : 1, 1); A.fing.position.y = fist ? .01 : -.012; A.hand.scale.setScalar(fist ? .78 : 1); }
-  const medProp = new THREE.Group(); { const tc = document.createElement('canvas'); tc.width = tc.height = 64; const g2 = tc.getContext('2d'); g2.fillStyle = '#eee'; g2.fillRect(0, 0, 64, 64); g2.fillStyle = '#c22'; g2.fillRect(26, 10, 12, 44); g2.fillRect(10, 26, 44, 12); const t = new THREE.CanvasTexture(tc); t.colorSpace = THREE.SRGBColorSpace;
-    medProp.userData.kit = new THREE.Mesh(new THREE.BoxGeometry(.16, .1, .12), new THREE.MeshStandardMaterial({ map: t, roughness: .6 })); medProp.userData.med = new THREE.Mesh(new THREE.BoxGeometry(.24, .14, .16), new THREE.MeshStandardMaterial({ map: t, roughness: .6 })); medProp.userData.bandage = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, .07, 14).rotateZ(H), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: .9 }));
-    ['kit', 'med', 'bandage'].forEach(k => { medProp.add(medProp.userData[k]); medProp.userData[k].renderOrder = 1; }); vmRoot.add(medProp); medProp.visible = false; }
+  // 회복 소품: 붕대(두루마리·풀린 끈·팔에 감긴 붕대), 구급상자(뚜껑·거즈), 의료용 키트(가방·주사기)
+  const medProp = new THREE.Group(); const HP = {}; {
+    const crossTex = (bg, fg) => { const tc = document.createElement('canvas'); tc.width = tc.height = 64; const g2 = tc.getContext('2d'); g2.fillStyle = bg; g2.fillRect(0, 0, 64, 64); g2.fillStyle = fg; g2.fillRect(24, 12, 16, 40); g2.fillRect(12, 24, 40, 16); const t = new THREE.CanvasTexture(tc); t.colorSpace = THREE.SRGBColorSpace; return t; };
+    const M = (c, x = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .8 }, x));
+    const cloth = M(0xf1ede2, { roughness: .95 }), redM = M(0xb3261e, { roughness: .6 }), whiteM = M(0xe9e6df, { roughness: .7 }), grayM = M(0x444846, { roughness: .5, metalness: .4 });
+    const add = (par, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); par.add(m); return m; };
+    // 붕대
+    { const g = new THREE.Group(); const roll = new THREE.Group(); add(roll, new THREE.CylinderGeometry(.026, .026, .055, 18), cloth).rotation.z = H; add(roll, new THREE.CylinderGeometry(.009, .009, .057, 10), M(0xb8ad95)).rotation.z = H;
+      for (const sx of [-1, 1]) add(roll, new THREE.RingGeometry(.009, .026, 18), M(0xdcd6c6, { side: THREE.DoubleSide }), sx * .0286).rotation.y = H;
+      g.add(roll); const tail = add(medProp, new THREE.CylinderGeometry(1, 1, 1, 6), cloth); const wrap = add(medProp, new THREE.CylinderGeometry(1, 1, 1, 16), cloth);
+      HP.bandage = { g, roll, tail, wrap }; }
+    // 구급상자: 상자 + 경첩 달린 뚜껑 + 안쪽 거즈
+    { const g = new THREE.Group(); const box = add(g, new THREE.BoxGeometry(.17, .055, .12), redM); box.position.y = -.0275; add(g, new THREE.BoxGeometry(.158, .004, .108), M(0x5a1410), 0, -.002, 0);
+      const lidP = new THREE.Group(); lidP.position.set(0, 0, .06); g.add(lidP); const lid = add(lidP, new THREE.BoxGeometry(.17, .018, .12), [redM, redM, new THREE.MeshStandardMaterial({ map: crossTex('#b3261e', '#f2f2f2'), roughness: .6 }), redM, redM, redM]); lid.position.set(0, .009, -.06);
+      add(g, new THREE.BoxGeometry(.03, .012, .012), grayM, 0, -.01, -.065); for (let k = 0; k < 3; k++) add(g, new THREE.BoxGeometry(.04, .012, .05), whiteM, -.05 + k * .05, .002, .01);
+      const gauze = add(medProp, new THREE.BoxGeometry(.05, .01, .06), cloth); HP.kit = { g, lidP, gauze }; }
+    // 의료용 키트: 가방 + 주사기 (통·약·밀대·바늘·뚜껑)
+    { const g = new THREE.Group(); const bag = add(g, new THREE.BoxGeometry(.22, .12, .13), new THREE.MeshStandardMaterial({ color: 0xc23a2c, roughness: .9 })); add(g, new THREE.PlaneGeometry(.07, .07), new THREE.MeshStandardMaterial({ map: crossTex('#f2f2f2', '#c23a2c'), roughness: .7 }), 0, 0, .0652);
+      add(g, new THREE.BoxGeometry(.222, .008, .132), M(0x2a2a2a), 0, .045, 0); add(g, new THREE.TorusGeometry(.03, .006, 6, 14, Math.PI), M(0x222222), 0, .062, 0);
+      const syr = new THREE.Group(); const barrel = add(syr, new THREE.CylinderGeometry(.0085, .0085, .085, 14), new THREE.MeshStandardMaterial({ color: 0xdde8ee, roughness: .1, transparent: true, opacity: .45, depthWrite: false }));
+      const liquid = add(syr, new THREE.CylinderGeometry(.0072, .0072, .07, 12), M(0xe0c030, { roughness: .2, emissive: 0x302000 })); liquid.position.y = -.005;
+      add(syr, new THREE.CylinderGeometry(.016, .016, .003, 14), whiteM, 0, .04, 0); const plunger = new THREE.Group(); syr.add(plunger); add(plunger, new THREE.CylinderGeometry(.0025, .0025, .07, 6), whiteM, 0, .035, 0); add(plunger, new THREE.CylinderGeometry(.011, .011, .003, 14), whiteM, 0, .07, 0);
+      add(syr, new THREE.CylinderGeometry(.003, .0045, .01, 8), whiteM, 0, -.047, 0); const needle = add(syr, new THREE.CylinderGeometry(.0006, .0006, .03, 4), M(0xd8dde0, { metalness: .9, roughness: .2 })); needle.position.y = -.067;
+      const cap = add(syr, new THREE.CylinderGeometry(.0035, .0035, .032, 8), M(0xe86a1a)); cap.position.y = -.066;
+      syr.scale.setScalar(1.5); medProp.add(syr); HP.med = { g, syr, plunger, liquid, cap }; }
+    ['bandage', 'kit', 'med'].forEach(k => medProp.add(HP[k].g)); medProp.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.renderOrder = 1; } }); vmRoot.add(medProp); medProp.visible = false; }
+  // 시간 → 위치 키프레임 보간
+  const kfv = (u, K) => { let i = 0; while (i < K.length - 2 && u > K[i + 1][0]) i++; const a = K[i], b = K[i + 1]; const t = ease(Math.max(0, Math.min(1, (u - a[0]) / Math.max(1e-4, b[0] - a[0])))); return new THREE.Vector3(a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t); };
+  let healSndT = 0, healPrevU = 0;
   const SH_R = new THREE.Vector3(.26, -.4, .12), SH_L = new THREE.Vector3(-.26, -.4, .08);
   let punchT = 9, punchSide = 1, punchDone = true; const _w = new THREE.Vector3();
   function toCam(v) { return vmRoot.worldToLocal(v); }
@@ -348,14 +409,42 @@ export function createFP(o) {
     const h = ray.intersectObjects((o.playerHitboxes ? o.playerHitboxes() : []).concat(hitables), false)[0]; const st = o.rayStatic ? o.rayStatic(og, f, 2.2) : null;
     if (h && h.object.userData.player && (!st || h.distance < st.distance)) { const head = !!h.object.userData.head, limb = !!h.object.userData.limb; blood(h.point, f, head); snd.hit(); snd.noise(.12, 700, .45, 3); showHit(head ? '헤드샷' : ''); o.onHitPlayer && o.onHitPlayer(h.object.userData.player, head ? 65 : limb ? 34 : 42, head, 'knife', h.point, f); }
     else if (st || (h && !h.object.userData.player)) { const hp = st || h; puff(hp.point, 0xb8a68a, .25, .35); snd.tone(2600, .05, .05, 'square'); if (h && h.object.userData.target) { h.object.userData.target.userData.av += 1; snd.ding(); } } }
+  // 회복 동작. 붕대: 왼팔을 들고 오른손으로 감기 → 끊기. 구급상자: 뚜껑 열기 → 거즈 꺼내 누르기 두 번 → 닫기. 의료용 키트: 가방에서 주사기 → 뚜껑 빼기 → 팔뚝에 놓고 밀대 누르기
+  function healAnim(hk, br) { const u = Math.min(1, hk.t / hk.dur), k = hk.k; medProp.visible = true; ['bandage', 'kit', 'med'].forEach(q => HP[q].g.visible = q === k); HP.bandage.tail.visible = HP.bandage.wrap.visible = false; HP.kit.gauze.visible = false; HP.med.syr.visible = false;
+    if (u < healPrevU) healSndT = 0; healPrevU = u;
+    const up = ease(u / .1) * (1 - ease((u - .92) / .08)), drop = (1 - up) * .3; const lift = v => v.add(new THREE.Vector3(0, -drop + br, 0));
+    if (k === 'bandage') { const B = HP.bandage; const L = lift(new THREE.Vector3(.07, -.15, -.4)); poseArm(AL, L, SH_L, true, lift(new THREE.Vector3(-.13, -.21, -.33)));
+      const c = AL.fo.position.clone(), ax = new THREE.Vector3(0, 1, 0).applyQuaternion(AL.fo.quaternion), p1 = new THREE.Vector3().crossVectors(ax, new THREE.Vector3(0, 0, 1)).normalize(), p2 = new THREE.Vector3().crossVectors(ax, p1).normalize();
+      const w = Math.max(0, Math.min(1, (u - .16) / .62)), ang = w * Math.PI * 2 * 4.5, along = (w - .5) * .07; let R;
+      if (u < .16) R = lift(kfv(u / .16, [[0, .14, -.3, -.36], [1, .02, -.14, -.36]]));
+      else if (w < 1) R = c.clone().addScaledVector(ax, along).addScaledVector(p1, Math.cos(ang) * .055).addScaledVector(p2, Math.sin(ang) * .055);
+      else R = c.clone().addScaledVector(ax, .035).add(kfv((u - .78) / .14, [[0, 0, 0, 0], [.45, .09, .02, .02], [1, .13, -.04, .05]]));
+      poseArm(AR, R, SH_R, false); B.g.position.copy(R).add(new THREE.Vector3(-.01, .025, -.01)); B.g.rotation.set(0, .3, ang * .3); B.roll.scale.setScalar(1 - w * .35);
+      if (w > 0) { const len = .015 + .075 * w; B.wrap.visible = true; B.wrap.position.copy(c).addScaledVector(ax, along * .5); B.wrap.quaternion.copy(AL.fo.quaternion); B.wrap.scale.set(.039 + .003 * w, len, .039 + .003 * w);
+        if (u < .86) { const pA = c.clone().addScaledVector(ax, along).addScaledVector(p1, Math.cos(ang) * .04).addScaledVector(p2, Math.sin(ang) * .04); B.tail.visible = true; seg(B.tail, pA, B.g.position, .006); B.tail.scale.x = .012; } }
+      const turn = Math.floor(ang / Math.PI); if (turn > healSndT && w < 1) { healSndT = turn; snd.noise(.14, 2400, .05, 2); } if (u > .82 && healSndT < 99) { healSndT = 99; snd.noise(.22, 3200, .12, 1.5); } return; }
+    if (k === 'kit') { const K = HP.kit, base = lift(new THREE.Vector3(-.03, -.2, -.38)); K.g.position.copy(base); K.g.rotation.set(.65, .15, 0); poseArm(AL, base.clone().add(new THREE.Vector3(-.07, -.04, .03)), SH_L, false);
+      K.lidP.rotation.x = -1.9 * ease((u - .1) / .08) * (1 - ease((u - .84) / .07));
+      const inK = base.clone().add(new THREE.Vector3(.01, .03, -.01)), press = lift(new THREE.Vector3(.02, -.5, -.2)), hold = lift(new THREE.Vector3(.11, -.23, -.37));
+      const R = kfv(u, [[0, .14, -.3, -.36], [.18, .13, -.22, -.37], [.26, inK.x, inK.y, inK.z], [.32, inK.x, inK.y + .005, inK.z], [.4, hold.x, hold.y, hold.z], [.5, press.x, press.y, press.z], [.6, .06, -.32, -.32], [.7, press.x, press.y, press.z], [.8, .1, -.27, -.36], [.86, .1, -.18, -.36], [.9, .08, -.21, -.38], [1, .14, -.4, -.36]]);
+      poseArm(AR, R, SH_R, false); if (u > .3 && u < .78) { K.gauze.visible = true; K.gauze.position.copy(R).add(new THREE.Vector3(-.02, -.01, -.02)); K.gauze.rotation.set(.6, 0, 0); }
+      for (const [t0, f, l, gn] of [[.1, 1400, .25, .08], [.3, 3000, .15, .05], [.5, 500, .2, .08], [.7, 500, .2, .08], [.86, 800, .12, .1]]) if (u >= t0 && healSndT < t0) { healSndT = t0; snd.noise(l, f, gn, 2); } return; }
+    // 의료용 키트
+    { const Q = HP.med, bagP = lift(new THREE.Vector3(-.1, -.27, -.42)); Q.g.position.copy(bagP); Q.g.rotation.set(.45, .3, 0); Q.g.visible = u < .34;
+      const armL = u < .3 ? bagP.clone().add(new THREE.Vector3(.02, .05, .02)) : lift(kfv((u - .3) / .1, [[0, -.08, -.26, -.42], [1, .06, -.16, -.4]])); poseArm(AL, armL, SH_L, u < .3, u < .3 ? null : lift(new THREE.Vector3(-.13, -.21, -.33)));
+      const c = AL.fo.position.clone(), ax = new THREE.Vector3(0, 1, 0).applyQuaternion(AL.fo.quaternion), nrm = new THREE.Vector3(0, 1, .5); nrm.addScaledVector(ax, -nrm.dot(ax)).normalize();
+      const inj = c.clone().addScaledVector(ax, .02).addScaledVector(nrm, .12);
+      const R = kfv(u, [[0, .14, -.32, -.36], [.12, .1, -.22, -.38], [.2, bagP.x + .07, bagP.y + .08, bagP.z + .02], [.28, .1, -.17, -.36], [.36, .11, -.16, -.37], [.46, inj.x, inj.y, inj.z], [.72, inj.x, inj.y - .006, inj.z], [.8, inj.x + .04, inj.y + .06, inj.z], [1, .14, -.36, -.36]]);
+      poseArm(AR, R, SH_R, false);
+      if (u > .18) { Q.syr.visible = true; Q.syr.position.copy(R).add(new THREE.Vector3(-.02, .03, -.01)); const tgt = u > .4 ? c.clone().addScaledVector(ax, .02) : Q.syr.position.clone().add(new THREE.Vector3(-.4, -.3, -.6)); Q.syr.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), tgt.sub(Q.syr.position).normalize()); }
+      Q.cap.visible = u < .34; const push = ease((u - .48) / .22); Q.plunger.position.y = -.05 * push; Q.liquid.scale.y = Math.max(.05, 1 - push); Q.liquid.position.y = -.005 - .035 * push;
+      for (const [t0, f, l, gn] of [[.14, 1200, .3, .08], [.32, 4200, .05, .1], [.47, 3000, .04, .06], [.78, 2500, .05, .05], [.9, 1000, .25, .07]]) if (u >= t0 && healSndT < t0) { healSndT = t0; snd.noise(l, f, gn, 2); } } }
   function updArms(dt) {
     const w = ws && ws.w; const healK = o.healing && o.healing(); const showArms = enabled && !P.dead && !(w && w.rig) && !(cur && !cur.visible && !(ws && ws.reload && ws.reload.kind === 'throw'));
     AR.g.visible = AL.g.visible = showArms; medProp.visible = false; knifeM.visible = false; if (!showArms) return;
     cam2.updateMatrixWorld(true); vmRoot.updateMatrixWorld(true);
     const tnow = performance.now() / 1000, bob = Math.sin(P.bob) * .01, br = Math.sin(tnow * 1.6) * .004;
-    if (healK && healK.k) { const u = Math.min(1, healK.t / healK.dur), wig = Math.sin(tnow * 9) * .02; medProp.visible = true; ['kit', 'med', 'bandage'].forEach(k => medProp.userData[k].visible = k === healK.k);
-      medProp.position.set(0, -.2 + br, -.36); medProp.rotation.set(.5, Math.sin(tnow * 2) * .2, 0);
-      poseArm(AR, new THREE.Vector3(.07 + wig, -.21, -.34), SH_R, false); poseArm(AL, new THREE.Vector3(-.07, -.22 - wig, -.35), SH_L, false); return; }
+    if (healK && healK.k) { healAnim(healK, br); return; }
     if (!cur && knifeOut) { slashT += dt; if (!slashDone && slashT > .12) { slashDone = true; slashHit(); }
       const u = Math.min(1, slashT / .32), e2 = slashT < .32 ? Math.sin(u * Math.PI) : 0, sd = punchSide; const run = P.sprinting ? 1 : 0;
       const r = new THREE.Vector3(.17 + (-.24 * u) * e2 * (sd > 0 ? 1 : -1) * 0 + (sd > 0 ? .1 - .3 * u : -.2 + .3 * u) * e2, -.24 + bob + br - run * .05 + .1 * e2 * (1 - u), -.44 - .2 * e2);
@@ -414,7 +503,7 @@ export function createFP(o) {
       case 'mode': if (ws) { const v = invOf(ws.w); if (ws.w.modes.length < 2) setState(ws.w.name + '은(는) ' + ws.w.modes[0] + '만 돼요'); else { v.mode = (v.mode + 1) % ws.w.modes.length; snd.click(); setState(ws.w.modes[v.mode]); } updHud(); } break;
       case 'crouch': if (P.sprinting && P.onG && slideCd <= 0) startSlide(); else P.stance = P.stance === 'crouch' ? 'stand' : 'crouch'; break;
       case 'prone': slideT = 0; P.stance = P.stance === 'prone' ? 'stand' : 'prone'; break;
-      case 'jump': if (slideT > 0) { slideT = 0; P.stance = 'stand'; if (P.onG) { P.vel.y = 4.3; P.onG = false; } } else if (P.stance !== 'stand') P.stance = 'stand'; else if (P.onG) { P.vel.y = 4.3; P.onG = false; } break;
+      case 'jump': if (slideT > 0) { slideT = 0; P.stance = 'stand'; if (P.onG) { P.vel.y = 4.3; P.onG = false; P.stam = Math.max(0, P.stam - .08); P.stamCd = .9; } } else if (P.stance !== 'stand') P.stance = 'stand'; else if (P.onG) { P.vel.y = P.stam > .1 ? 4.3 : 3.4; P.onG = false; P.stam = Math.max(0, P.stam - .08); P.stamCd = .9; } break;
       case 's1': case 's2': case 's3': case 's4': { const n = +a[1] - 1; if (n === 3 && curSlot === 3 && o.onCycleThrow) { o.onCycleThrow(); break; } if (n !== curSlot && slots[n]) { knifeOut = false; equip(n); } break; }
       case 'knife': if (knifeOut) { knifeOut = false; snd.click(); } else { holster(); knifeOut = true; snd.noise(.15, 4000, .08, 3); } renderSlots(); updHud(); break;
       case 'holster': if (ws || knifeOut) { knifeOut = false; holster(); } break;
@@ -436,7 +525,7 @@ export function createFP(o) {
   function holster() { vm.clear(); cur = null; ws = null; curSlot = -1; renderSlots(); updHud(); }
   /* ----- 슬라이딩 ----- */
   let slideT = 0, slideCd = 0; const slideDir = new THREE.Vector3();
-  function startSlide() { slideT = .8; slideCd = 1.1; slideDir.set(P.vel.x, 0, P.vel.z).normalize(); P.stance = 'crouch'; snd.noise(.6, 900, .25, 1.5); shake += .1; }
+  function startSlide() { if (P.stam < .12) return; P.stam -= .12; P.stamCd = 1; slideT = .8; slideCd = 1.1; slideDir.set(P.vel.x, 0, P.vel.z).normalize(); P.stance = 'crouch'; snd.noise(.6, 900, .25, 1.5); shake += .1; }
 
   /* ----- 사격 ----- */
   function canFire() { if (!ws || !cur) return false; if (ws.draw < 1 || ws.cycle) return false; if (P.sprinting || (o.healing && o.healing())) return false; if (ws.reload) { if (ws.reload.kind === 'shell' && invOf(ws.w).ammo > 0) ws.reload.cancel = true; return false; } return true; }
@@ -683,7 +772,7 @@ export function createFP(o) {
     const w = ws && ws.w; const tnow = performance.now() / 1000; const can = ctrl();
     const fwd = can ? (held('fwd') ? 1 : 0) - (held('back') ? 1 : 0) : 0, str = can ? (held('right') ? 1 : 0) - (held('left') ? 1 : 0) : 0;
     slideCd -= dt; if (slideT > 0) slideT -= dt;
-    P.sprinting = can && slideT <= 0 && held('sprint') && fwd > 0 && adsT < .3 && P.stance !== 'prone' && !(ws && ws.reload && ws.reload.kind !== 'shell') && !(o.healing && o.healing());
+    P.sprinting = can && !P.tired && slideT <= 0 && held('sprint') && fwd > 0 && adsT < .3 && P.stance !== 'prone' && !(ws && ws.reload && ws.reload.kind !== 'shell') && !(o.healing && o.healing());
     if (P.sprinting && P.stance === 'crouch') P.stance = 'stand';
     P.holding = can && held('sprint') && adsT > .6 && scopedOptic() && P.breath > 0;
     let spd = P.stance === 'prone' ? 1.1 : P.stance === 'crouch' ? 2.6 : P.sprinting ? 6.4 : 4.7; if (adsT > .5) spd *= .6; if (o.healing && o.healing()) spd *= .5;
@@ -698,6 +787,12 @@ export function createFP(o) {
     const leanT = can ? (held('leanL') ? -1 : 0) + (held('leanR') ? 1 : 0) : 0; P.lean += (leanT * (P.stance === 'prone' ? 0 : 1) - P.lean) * Math.min(1, dt * 9);
     const sp = Math.hypot(P.vel.x, P.vel.z); if (P.onG && sp > .5) { P.bob += dt * sp * 1.9; P.stepT -= dt * sp; if (P.stepT <= 0) { P.stepT = 2.2; snd.step(P.stance === 'crouch' ? .4 : 1); } }
     if (P.holding) P.breath = Math.max(0, P.breath - dt / 5); else P.breath = Math.min(1, P.breath + dt / 6);
+    // 스태미나: 달리면 약 7초에 바닥, 쉬면 0.9초 뒤부터 회복 (서 있으면 더 빨리). 바닥나면 30%까지 찰 때까지 못 달림
+    if (P.sprinting && sp > 1) { P.stam = Math.max(0, P.stam - dt / 7); P.stamCd = .9; if (P.stam <= 0) { P.tired = true; setState('숨이 차요'); } }
+    else { P.stamCd -= dt; if (P.stamCd <= 0) P.stam = Math.min(1, P.stam + dt * (sp < .5 ? .2 : P.stance !== 'stand' ? .17 : .12)); }
+    if (P.tired && P.stam >= .3) P.tired = false;
+    if (P.tired || P.stam < .25) { P.huffT = (P.huffT || 0) - dt; if (P.huffT <= 0) { P.huffT = P.tired ? .75 : 1.1; snd.noise(.32, 700, P.tired ? .06 : .035, 2.2); } }
+    if (el.stam) { el.stam.style.opacity = P.stam < .995 ? 1 : 0; el.stamI.style.width = (P.stam * 100) + '%'; el.stam.classList.toggle('tired', P.tired); }
     if (el.breath) { el.breath.hidden = !(scopedOptic() && adsT > .6); el.breathI.style.width = (P.breath * 100) + '%'; }
     if (el.stance) el.stance.textContent = (P.dead ? '사망' : P.stance === 'prone' ? '엎드리기' : P.stance === 'crouch' ? '앉기' : P.sprinting ? '달리기' : '서기') + (Math.abs(P.lean) > .3 ? (P.lean < 0 ? ' · 왼쪽 기울임' : ' · 오른쪽 기울임') : '');
     if (fireHeld) tryFire(false); if (burstLeft > 0 && !fireHeld) tryFire(false);
@@ -725,7 +820,7 @@ export function createFP(o) {
       const a = ease(adsT); let px = hip[0] + (ad[0] - hip[0]) * a, py = hip[1] + (ad[1] - hip[1]) * a, pz = hip[2] + (ad[2] - hip[2]) * a;
       let rx = 0, ry = 0, rz = 0;
       hipT += ((P.sprinting ? 1 : 0) - hipT) * Math.min(1, dt * 8); const sp2 = ease(hipT); px += -.04 * sp2; py += -.06 * sp2; pz += .04 * sp2; ry += .75 * sp2; rz += .25 * sp2; rx += -.25 * sp2;
-      if (o.healing && o.healing()) { py -= .25; rx -= .6; }
+      if (o.healing && o.healing()) { py -= .75; rx -= .9; }
       swayX += (-mdx * .00025 - swayX) * Math.min(1, dt * 10); swayY += (mdy * .00025 - swayY) * Math.min(1, dt * 10); mdx = 0; mdy = 0;
       px += Math.max(-.03, Math.min(.03, swayX)) * (1 - a * .7); py += Math.max(-.03, Math.min(.03, swayY)) * (1 - a * .7);
       px += Math.cos(P.bob) * .006 * (1 - a * .85); py += Math.abs(Math.sin(P.bob)) * .008 * (1 - a * .85);
@@ -793,8 +888,8 @@ const HUD_CSS = `
 .hitm::after{transform:rotate(90deg)}
 .dist{position:absolute;left:50%;top:calc(50% + 26px);transform:translateX(-50%);font:600 13px var(--mono,monospace);color:#fff;text-shadow:0 1px 2px #000;opacity:0}
 .dotret{position:absolute;left:50%;top:50%;opacity:0;width:0;height:0}
-.dotret::before{content:"";position:absolute;width:5px;height:5px;left:-2.5px;top:-2.5px;border-radius:50%;background:#ff3030;box-shadow:0 0 6px 1px #ff2020aa}
-.dotret[data-t=holo]::after{content:"";position:absolute;width:38px;height:38px;left:-20px;top:-20px;border-radius:50%;border:2px solid #ff3030cc;box-shadow:0 0 6px #ff202088}
+.dotret svg{position:absolute;left:-40px;top:-40px;width:80px;height:80px;overflow:visible;display:none}
+.dotret[data-t=dot] .rd,.dotret[data-t=holo] .ho{display:block}
 .scope{position:absolute;inset:0;opacity:0;--d:min(86vh,86vw)}
 .scope .ring{position:absolute;left:50%;top:50%;width:var(--d);height:var(--d);transform:translate(-50%,-50%);border-radius:50%;box-shadow:0 0 0 200vmax #000,inset 0 0 40px 18px #000c}
 .scope .h,.scope .v{position:absolute;background:#000}
@@ -834,6 +929,7 @@ const HUD_CSS = `
 .stance .k{color:var(--dim,#999);font-size:11px;line-height:1.7;max-width:46ch}
 .stance .k b{color:#fff;border:1px solid #fff5;padding:0 4px;margin-right:2px;background:#0006;font-weight:500}
 .breath{width:120px;height:4px;background:#0008}
+.stamb{height:3px;margin-top:4px;background:#0007;opacity:0;transition:opacity .4s}.stamb i{display:block;height:100%;width:100%;background:#e8d27a;transition:background .3s}.stamb.tired i{background:#e0623e}
 .breath i{display:block;height:100%;background:#9cd2ff}
 .start{position:absolute;inset:0;display:grid;place-items:center;background:#0009;pointer-events:auto;cursor:pointer}
 .start div{text-align:center;display:grid;gap:8px}
@@ -860,7 +956,12 @@ export function mountHud(container, keysHtml) {
   const mils = []; for (let i = -4; i <= 4; i++) if (i) { mils.push(`<i style="left:calc(var(--d)*${i * .045});top:0"></i>`, `<i style="top:calc(var(--d)*${i * .045});left:0"></i>`); }
   const d = document.createElement('div'); d.className = 'fp'; d.id = 'fp'; d.hidden = true;
   d.innerHTML = `<div class="scope" id="scope" data-ret="mil"><div class="ring"></div><div class="h"></div><div class="v"></div><div class="circ"></div><div class="chv"></div><div class="mils">${mils.join('')}</div><div class="dot"></div><div class="zt" id="zoomTxt">8×</div></div>
-  <div class="dotret" id="dotRet"></div>
+  <div class="dotret" id="dotRet">
+    <svg class="rd" viewBox="-40 -40 80 80"><defs><radialGradient id="rdg"><stop offset="0" stop-color="#fff1e8"/><stop offset=".35" stop-color="#ff5a4a"/><stop offset="1" stop-color="#ff2020" stop-opacity="0"/></radialGradient><filter id="rdf" x="-2" y="-2" width="5" height="5"><feGaussianBlur stdDeviation="1.6"/></filter></defs>
+      <circle r="5.5" fill="#ff2a2a" opacity=".35" filter="url(#rdf)"/><circle r="2.6" fill="url(#rdg)"/><circle r="1" fill="#fff4ee" opacity=".9"/></svg>
+    <svg class="ho" viewBox="-40 -40 80 80"><defs><filter id="hof" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation=".7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="hon" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="#ff3a30"/><rect width="1" height="1" fill="#ff8070" opacity=".6"/></pattern></defs>
+      <g filter="url(#hof)" opacity=".92"><circle r="20" fill="none" stroke="url(#hon)" stroke-width="1.6"/><path d="M0 -20V-14M0 20V14M-20 0H-14M20 0H14" stroke="#ff3a30" stroke-width="1.6"/><circle r="1.4" fill="#ffd8d0"/><circle r="2.2" fill="#ff3a30" opacity=".5"/></g></svg>
+  </div>
   <div class="compass"><div class="strip" id="strip"></div><div class="mark"></div></div>
   <div class="cross" id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="hitm" id="hitm"></div><div class="dist" id="dist"></div>
@@ -868,7 +969,7 @@ export function mountHud(container, keysHtml) {
   <div class="fuses" id="fuses"></div>
   <div class="thr" id="thrUi" hidden><div class="tb"><i id="thrBar"></i></div><span id="thrTxt"></span></div>
   <div class="stance"><span id="stanceTxt">서기</span><div class="breath" id="breath" hidden><i id="breathI"></i></div><div class="k">${keysHtml || ''}</div></div>
-  <div class="bot"><div class="state" id="stateTxt"></div><div class="ammo"><b id="ammoN">30</b><small id="ammoR">90</small><em id="modeTxt">자동</em></div><div class="hp"><i id="hpI"></i><u id="hpHeal"></u></div></div>
+  <div class="bot"><div class="state" id="stateTxt"></div><div class="ammo"><b id="ammoN">30</b><small id="ammoR">90</small><em id="modeTxt">자동</em></div><div class="hp"><i id="hpI"></i><u id="hpHeal"></u></div><div class="stamb" id="stam"><i id="stamI"></i></div></div>
   <div class="slots" id="slotsEl"></div>
   <div class="inv" id="invPanel" hidden></div>
   <div class="start" id="start"><div><button class="kbtn" id="keysOpen">키 설정</button><div class="kin" id="keysIn" hidden></div><b>클릭해서 시작</b><span>마우스로 시선, 좌클릭 사격, 우클릭을 누르고 있는 동안 조준, H 인벤토리</span><span>Esc를 누르면 마우스가 풀려요</span></div></div>`;

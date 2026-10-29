@@ -76,6 +76,8 @@ export function poseAvatar(av, dt, st) { const U = av.userData;
   U.aim.position.set(.0, 1.44 - .47 * U.crouchT - 1.2 * pr, -.5 * pr); U.aim.rotation.x = Math.max(-.6, Math.min(.6, st.pitch)) * (1 - pr * .6);
   if (U.gun) U.gun.visible = !st.dead;
   if (!U.ready) return;
+  // 그림자는 가까운 사람만 (멀리 있는 그림자는 안 보이는데 비용만 큼)
+  const sh = (st.dist || 0) < 45; if (U.shadowOn !== sh) { U.shadowOn = sh; U.model.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
   // 멀리 있으면 애니메이션을 띄엄띄엄 계산
   U.acc = (U.acc || 0) + dt; U.frame++; const far = (st.dist || 0) > 70; if (far && U.frame % 4) return; const adt = U.acc; U.acc = 0;
   const A = U.act, spd = st.dead || pr > .5 ? 0 : st.spd;

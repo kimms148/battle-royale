@@ -535,9 +535,10 @@ $('trainBtn').onclick = startTraining; $('leaveTrain').onclick = () => leaveTrai
 function resize() { const w = innerWidth, h = innerHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 const clock = new THREE.Clock(); let sendT = 0;
-function loop() { requestAnimationFrame(loop); const dt = Math.min(.05, clock.getDelta());
+function loop() { requestAnimationFrame(loop); const T0 = performance.now(); loopBody(); PERF.all += performance.now() - T0; }
+function loopBody() { const dt = Math.min(.05, clock.getDelta());
   if (phase !== 'lobby') {
-    fp.update(dt); updRemotes(dt); updHeal(dt); if (training) updDummies(dt);
+    const t0 = performance.now(); fp.update(dt); const t1 = performance.now(); updRemotes(dt); PERF.rem += performance.now() - t1; PERF.fp += t1 - t0; updHeal(dt); if (training) updDummies(dt);
     if (!alive) { const r = remotes.get(specId); if (r && r.av) { if (!r.alive) nextSpec(); const back = new THREE.Vector3(Math.sin(r.yaw) * 3.2, 0, Math.cos(r.yaw) * 3.2); cam.position.set(r.x + back.x + Math.cos(r.yaw) * .6, r.y + 2.1, r.z + back.z - Math.sin(r.yaw) * .6); cam.rotation.set(r.pitch * .7 - .12, r.yaw, 0, 'YXZ'); cam.fov = 72; cam.updateProjectionMatrix(); } else if (!r) { cam.position.set(0, 160, 160); cam.lookAt(0, 0, 0); if (remotes.size) nextSpec(); } }
     placeSun();
     findLoot(); $('pick').hidden = !nearLoot; if (nearLoot) { const u = nearLoot.userData; $('pickT').textContent = itemName(u.type, u.k, u.n) + ' 줍기'; }
@@ -545,7 +546,8 @@ function loop() { requestAnimationFrame(loop); const dt = Math.min(.05, clock.ge
     { const cx = cam.position.x, cz = cam.position.z, tt = performance.now() / 300; lootG.children.forEach(g => { const d = Math.abs(g.position.x - cx) + Math.abs(g.position.z - cz); g.visible = d < 60; if (g.visible) g.children[1].material.opacity = .35 + Math.sin(tt + g.userData.id) * .2; }); }
     sendT -= dt; if (alive && sendT <= 0) { sendT = .05; const P = fp.P; net({ t: 'st', p: [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2)], y: +P.yaw.toFixed(3), pi: +P.pitch.toFixed(3), s: P.stance === 'crouch' ? 1 : P.stance === 'prone' ? 2 : 0, w: fp.ws ? fp.ws.w.k : fp.knifeOut ? 'knife' : '', a: fp.adsT > .5 ? 1 : 0, b: fp.burning ? 1 : 0 }); }
   }
-  render(); }
+  { const t2 = performance.now(); render(); PERF.ren += performance.now() - t2; PERF.n++; } }
+const PERF = { fp: 0, rem: 0, ren: 0, n: 0, all: 0, misc: 0 }; window.__perf = () => { const n = PERF.n || 1, r = { fp: PERF.fp / n, rem: PERF.rem / n, ren: PERF.ren / n, all: PERF.all / n, n }; PERF.fp = PERF.rem = PERF.ren = PERF.n = PERF.all = 0; return r; };
 // 두 번 나눠 그리기: 세상(가까운 면 6cm) → 깊이 지우고 손·총(가까운 면 5mm). 총이 벽에 파묻히지 않고, 로그 깊이 버퍼가 필요 없어서 빠르고 깨짐이 없음
 [sun, hemi].forEach(l => l.layers.enableAll()); R.shadowMap.autoUpdate = false;
 function render() { const vr = fp.vmRoot; vr.traverse(m => { if (m.isLight) m.layers.enableAll(); else m.layers.set(1); });
@@ -553,7 +555,7 @@ function render() { const vr = fp.vmRoot; vr.traverse(m => { if (m.isLight) m.la
   if (!vr.visible) return; const bg = S.background, n0 = cam.near; S.background = null; cam.near = .005; cam.updateProjectionMatrix(); cam.layers.set(1);
   R.autoClear = false; R.clearDepth(); R.render(S, cam); R.autoClear = true; S.background = bg; cam.near = n0; cam.updateProjectionMatrix(); cam.layers.set(0); }
 connect(); loop();
-window.__map = () => MAPD; window.__dum = () => dummies; window.__br = { fp, remotes, get phase() { return phase }, get alive() { return alive }, get myId() { return myId }, net, lootObjs, gotItem, ammoPool, meds, opticOn, opticBag, get hp() { return myHp }, get zone() { return zone }, onKey, get nearLoot() { return nearLoot } };
+window.__map = () => MAPD; window.__dum = () => dummies; window.__br = { fp, remotes, get phase() { return phase }, get alive() { return alive }, get myId() { return myId }, net, lootObjs, gotItem, ammoPool, meds, opticOn, opticBag, get hp() { return myHp }, get zone() { return zone }, onKey, get nearLoot() { return nearLoot }, setHp: v => { myHp = v; updHp(); }, get heal() { return heal } };
 </script>
 </body>
 </html>
