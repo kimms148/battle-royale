@@ -303,7 +303,7 @@ export function createFP(o) {
   async function equip(s) {
     if (!slots[s]) return; if (ws && ws.w.thr && thr.pulled) { const k = ws.w.k; const p = handWorld(); spawnThrown(k, p, P.vel.clone(), true, undefined, thr.fuse); o.onThrow && o.onThrow(k, p, P.vel.clone(), thr.fuse); invOf(ws.w).reserve--; setState('핀 뽑은 수류탄을 떨어뜨렸어요'); } resetThr(); curSlot = s; const w = WK[slots[s]];
     const m = await getModel(w); if (slots[curSlot] !== w.k || curSlot !== s) return;
-    vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.userData.muzzle.add(flash); cur = m;
+    vm.clear(); resetParts(m); m.position.set(0, 0, 0); m.rotation.set(0, H, 0); m.visible = true; vm.add(m); m.traverse(x => { if (x.isMesh) { x.castShadow = false; x.receiveShadow = false; } }); m.userData.muzzle.add(flash); cur = m;
     if (optSel[w.k] !== undefined) attachOptic(m, w, optSel[w.k]); applyAtts(m, w);
     playIdle(m); ws = { w, draw: 0, reload: null, cycle: null }; ads = false; burstLeft = 0; updHud(); renderSlots(); o.onEquip && o.onEquip(w);
   }
@@ -384,12 +384,12 @@ export function createFP(o) {
 
 
   /* ----- 입력 ----- */
-  let invOpen = false, scopeBob = 0, recQ = 0, knifeOut = false, slashT = 9, slashDone = true;
+  let startTO = 0, invOpen = false, scopeBob = 0, recQ = 0, knifeOut = false, slashT = 9, slashDone = true;
   const ctrl = () => enabled && !P.dead && !invOpen && (!o.canControl || o.canControl());
   // 클릭 순간에 바로 잠가야 브라우저가 허락함 (비동기로 다시 시도하면 막힘)
   function lockNow() { try { const r = o.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
   el.start && el.start.addEventListener('click', () => { ac(); lockNow(); el.start.hidden = true; });
-  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === o.canvas; if (locked && el.start) el.start.hidden = true; if (!locked && invOpen) return; if (!locked && enabled) { el.start && (el.start.hidden = false); fireHeld = false; ads = false; for (const k in keys) keys[k] = false; } });
+  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === o.canvas; if (locked && el.start) el.start.hidden = true; if (!locked && invOpen) return; if (!locked && enabled) { clearTimeout(startTO); startTO = setTimeout(() => { if (!locked && enabled && !invOpen && el.start) el.start.hidden = false; }, 350); fireHeld = false; ads = false; for (const k in keys) keys[k] = false; } });
   document.addEventListener('pointerlockerror', () => { el.start && (el.start.hidden = true); setState('화면을 한 번 더 클릭하면 마우스가 잠겨요'); });
   document.addEventListener('mousemove', e => { if (!enabled) return; let dx = 0, dy = 0; if (locked) { dx = e.movementX; dy = e.movementY; } else if (dragLook) { dx = e.clientX - dragLook.x; dy = e.clientY - dragLook.y; dragLook = { x: e.clientX, y: e.clientY }; } else return;
     if (P.dead) { o.onDeadLook && o.onDeadLook(dx, dy); return; }
@@ -565,7 +565,7 @@ export function createFP(o) {
   let burnT = 0, burnAcc = 0, burnOwner = 0, inFire = false;
   function updBurn(dt) { if (burnT <= 0 || P.dead) { burnT = 0; if (el.burn) el.burn.style.opacity = 0; inFire = false; return; } burnAcc += dt; if (!inFire) burnT -= dt;
     if (burnAcc >= .5) { burnAcc = 0; o.selfDamage && o.selfDamage(inFire ? 7 : 4, 'incendiary_east', burnOwner); snd.noise(.15, 700, .2, 3); } inFire = false;
-    if (el.burn) el.burn.style.opacity = Math.min(1, .45 + .25 * Math.sin(performance.now() / 90)); }
+    if (el.burn) el.burn.style.opacity = .5 + .08 * Math.sin(performance.now() / 400); }
   const smokes = [];
   function smokeCloud(p) { const parts2 = []; for (let i = 0; i < 46; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: new THREE.Color().setHSL(0, 0, .62 + Math.random() * .2), transparent: true, depthWrite: false, opacity: 0, rotation: Math.random() * 6.28 }));
       const a = Math.random() * 6.28, r = Math.sqrt(Math.random()); sp.userData = { a, r, h: Math.random(), s: 2.6 + Math.random() * 2.6, rs: (Math.random() - .5) * .3, d: Math.random() * 1.2 }; sp.position.copy(p); S2.add(sp); parts2.push(sp); }
@@ -736,7 +736,7 @@ export function createFP(o) {
       if (!(ws && ws.cycle)) scopeBob *= Math.pow(.001, dt);
       if (el.scope) { el.scope.style.transform = scopeBob > .01 ? `translate(${scopeBob * -6}px, ${scopeBob * 16}px) rotate(${scopeBob * -1.2}deg)` : ''; el.scope.style.opacity = scoped ? 1 : 0; el.scope.dataset.ret = op.ret || 'mil'; if (el.zoomTxt) el.zoomTxt.textContent = (op.zoom || 8) + '×'; }
       if (el.dotRet) { el.dotRet.style.opacity = (op.type === 'dot' || op.type === 'holo') && adsT > .85 ? 1 : 0; el.dotRet.dataset.t = op.type || ''; }
-      flashT -= dt; flash.visible = flashT > 0 && !scoped; flash.scale.setScalar(.1 + Math.random() * .06);
+      flashT -= dt; flash.visible = flashT > 0 && !scoped; flash.scale.setScalar(.07 + Math.random() * .04);
     } else { if (el.scope) el.scope.style.opacity = 0; if (el.dotRet) el.dotRet.style.opacity = 0; }
     if (el.cross) { const moving = sp > .5; const gap = 6 + (moving ? 10 : 0) + (P.onG ? 0 : 14) + bloom * 900 + (P.stance === 'crouch' ? -2 : P.stance === 'prone' ? -3 : 0);
       el.cross.style.opacity = adsT > .4 || P.sprinting || P.dead ? 0 : 1; if (cr.length) { cr[0].style.top = (-gap - 9) + 'px'; cr[1].style.top = gap + 'px'; cr[2].style.left = (-gap - 9) + 'px'; cr[3].style.left = gap + 'px'; } }

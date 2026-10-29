@@ -169,7 +169,7 @@ const cam = new THREE.PerspectiveCamera(72, 1, .01, 1500); S.add(cam);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.2); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 320 }); sun.shadow.bias = -.0005; sun.shadow.normalBias = .03; S.add(sun); S.add(sun.target);
 const hemi = new THREE.HemisphereLight(0xc7d6e8, 0x4a4434, .8); S.add(hemi);
 const SUN_DIR = new THREE.Vector3(-.45, .85, -.3).normalize();
-function placeSun() { const tx = 96 / 2048; const x = Math.round(cam.position.x / tx) * tx, z = Math.round(cam.position.z / tx) * tx, y = Math.round(cam.position.y / 4) * 4; sun.target.position.set(x, y, z); sun.position.set(x + SUN_DIR.x * 150, y + SUN_DIR.y * 150, z + SUN_DIR.z * 150); }
+function placeSun() { const tx = 96 / 2048; const x = Math.round(cam.position.x / tx) * tx, z = Math.round(cam.position.z / tx) * tx, y = 0; sun.target.position.set(x, y, z); sun.position.set(x + SUN_DIR.x * 150, y + SUN_DIR.y * 150, z + SUN_DIR.z * 150); }
 const detTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 6000; i++) { const v = 170 + Math.random() * 85; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(160, 160); t.anisotropy = 8; return t; })();
 let terrain = null, water = null;
 // 자기장 벽
@@ -281,7 +281,7 @@ function onMsg(m) {
     case 'snap': onSnap(m); break;
     case 'shot': { const r = remotes.get(m.id); const w = WK[m.w]; if (!w) break; const o = new THREE.Vector3(...m.o); let mz = null; if (r && r.av && r.av.userData.gun) { mz = new THREE.Vector3(); r.av.userData.gunTip.getWorldPosition(mz); } fp.remoteShot(w, o, m.d.map(d => new THREE.Vector3(...d)), mz, !!m.q); if (r) r.flash = .05; break; }
     case 'throw': fp.spawnThrown(m.k, new THREE.Vector3(...m.p), new THREE.Vector3(...m.v), false, m.id, m.f); break;
-    case 'hp': { const prev = myHp; myHp = m.hp; updHp(); if (m.hp < prev && !m.heal) { snd.hurt(); $('dmgv').style.transition = 'none'; $('dmgv').style.opacity = Math.min(1, (prev - m.hp) / 30 + .3); requestAnimationFrame(() => { $('dmgv').style.transition = 'opacity .8s'; $('dmgv').style.opacity = 0; }); fp.punchShake(.3);
+    case 'hp': { const prev = myHp; myHp = m.hp; updHp(); if (m.hp < prev && !m.heal) { const soft = !m.from && prev - m.hp <= 15; snd.hurt(); $('dmgv').style.transition = 'none'; $('dmgv').style.opacity = soft ? .22 : Math.min(1, (prev - m.hp) / 30 + .3); requestAnimationFrame(() => { $('dmgv').style.transition = 'opacity .8s'; $('dmgv').style.opacity = 0; }); if (!soft) fp.punchShake(.3);
         if (m.from) { const a = Math.atan2(m.from[0] - fp.P.pos.x, m.from[1] - fp.P.pos.z); const rel = a - (fp.P.yaw + Math.PI); $('hurt').style.transform = `rotate(${-rel}rad)`; $('hurt').style.transition = 'none'; $('hurt').style.opacity = 1; requestAnimationFrame(() => { $('hurt').style.transition = 'opacity 1.4s'; $('hurt').style.opacity = 0; }); } } break; }
     case 'dealt': dmgNum(lastHitPt[m.id], m.dmg, m.head); if (m.kill) { $('kc').textContent = m.head ? '헤드샷 처치' : '처치'; $('kc').style.transition = 'none'; $('kc').style.opacity = 1; setTimeout(() => { $('kc').style.transition = 'opacity .8s'; $('kc').style.opacity = 0; }, 1200); } break;
     case 'kill': onKill(m); break;
@@ -462,7 +462,7 @@ function setAvGun(av, k) { const U = av.userData; if (U.gunK === k) return; U.gu
   avArm(U.armR, grip); avArm(U.armL, Hd.l ? g.position.clone().add(rotH(Hd.l)) : w.pistol ? grip.clone().add(new THREE.Vector3(-.03, -.02, .01)) : new THREE.Vector3(-.26, -.5, .02));
   U.gunTip.position.copy(g.position).add(rotH(m.userData.muzzle.position)); }
 function removeAvatar(r) { if (r.av) S.remove(r.av); r.av = null; }
-let zone = null;
+let zone = null, zoneOut = false;
 function onSnap(m) {
   const now = performance.now(); zone = m.z; $('aliveN').textContent = m.alive;
   const seen = new Set();
@@ -493,7 +493,7 @@ function drawMap(ctx, size, big) { const HF = MAPD ? MAPD.half : MAP.half; const
   if (px !== undefined) { ctx.save(); ctx.translate(X(px), X(pz)); ctx.rotate(-py); ctx.fillStyle = '#ffd36a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; const s = big ? 12 : 9; ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s * .7, s * .8); ctx.lineTo(0, s * .4); ctx.lineTo(-s * .7, s * .8); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore(); } }
 const miniCtx = $('mini').getContext('2d'), bigCtx = $('bigc').getContext('2d');
 function updZoneUi() { zoneWall.visible = !!zone; if (!zone) { $('ztxt').textContent = training ? '훈련장 · 자기장 없음' : ''; $('zonev').style.opacity = 0; return; } const [cx, cz, r, , , , st, tl, dps, ph] = zone; zoneWall.scale.set(Math.max(.1, r), 1, Math.max(.1, r)); zoneWall.position.x = cx; zoneWall.position.z = cz;
-  const me = alive ? fp.P.pos : null; const out = me && Math.hypot(me.x - cx, me.z - cz) > r; $('zonev').style.opacity = out ? 1 : 0;
+  const me = alive ? fp.P.pos : null; const dz2 = me ? Math.hypot(me.x - cx, me.z - cz) - r : -1; zoneOut = zoneOut ? dz2 > -2 : dz2 > 2; const out = zoneOut && me && Math.hypot(me.x - cx, me.z - cz) > r; $('zonev').style.opacity = out ? 1 : 0;
   const mm = String(Math.floor(tl / 60)).padStart(1, '0') + ':' + String(tl % 60).padStart(2, '0');
   $('ztxt').textContent = st === 'final' ? '최종 자기장' : st === 'wait' ? `${ph + 1}단계 · ${mm} 뒤 자기장이 줄어요` : `자기장 줄어드는 중 · ${mm}`; $('ztxt').className = 'ztxt' + (out ? ' warn' : '');
   if (out) $('ztxt').textContent += ` · 자기장 밖 (초당 -${dps})`; }
